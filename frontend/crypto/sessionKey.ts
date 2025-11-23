@@ -2,31 +2,58 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromB64 } from '@mysten/sui/utils';
 
 /**
- * Generate a unique device fingerprint
+ * Generate a unique device fingerprint using SHA-256
  * Combines User Agent, Screen Resolution, and a random UUID stored in localStorage
+ *
+ * SECURITY FIX (P0): Uses SHA-256 hashing to prevent collision attacks
+ * Reference: docs/tech/security/review-20251123.md CRYPTO-1
  */
-export function deriveDeviceFingerprint(): string {
+export async function deriveDeviceFingerprint(): Promise<string> {
     // 1. Get persistent device ID from localStorage
-    let deviceId = localStorage.getItem('inkblob_device_id');
-    if (!deviceId) {
+    let deviceId: string;
+    try {
+        deviceId = localStorage.getItem('inkblob_device_id') || '';
+        if (!deviceId) {
+            deviceId = crypto.randomUUID();
+            localStorage.setItem('inkblob_device_id', deviceId);
+        }
+    } catch (error) {
+        // Fallback for browsers with localStorage disabled
+        console.warn('localStorage unavailable, using session-only device ID');
         deviceId = crypto.randomUUID();
-        localStorage.setItem('inkblob_device_id', deviceId);
     }
 
-    // 2. Combine with browser info (simple fingerprinting)
-    // Note: In a real app, we might use a more robust library like FingerprintJS,
-    // but for this MVP, we just need to distinguish devices for the user.
+    // 2. Combine with browser info for device fingerprinting
     const userAgent = navigator.userAgent;
     const screenRes = `${window.screen.width}x${window.screen.height}`;
+    const deviceData = `${deviceId}|${userAgent}|${screenRes}`;
 
-    // 3. Hash the components to create a clean string
-    // We'll just return the UUID for now as it's the most reliable unique identifier per browser profile
-    return `device_${deviceId}`;
+    // 3. Hash with SHA-256 to prevent collision attacks
+    if (!crypto.subtle) {
+        throw new Error('WebCrypto API not available. Please use HTTPS or a modern browser.');
+    }
+
+    try {
+        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(deviceData));
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (error) {
+        console.error('SHA-256 digest failed:', error);
+        throw new Error('Device fingerprint generation failed');
+    }
 }
 
 /**
  * Derive Ed25519 Hot Wallet Keypair from Wallet Signature
  * Uses HKDF to deterministically generate a seed for the keypair
+ *
+ * SECURITY FIX (P1): Improved HKDF context separation
+ * Reference: docs/tech/security/review-20251123.md CRYPTO-3
+ * Device fingerprint moved to info field per HKDF best practices
+ *
+ * @param walletSignature - Base64-encoded signature from wallet
+ * @param deviceFingerprint - SHA-256 hash of device characteristics
+ * @returns Ed25519 keypair for device-specific hot wallet
  */
 export async function deriveHotWallet(
     walletSignature: string,
@@ -44,10 +71,11 @@ export async function deriveHotWallet(
         ['deriveBits']
     );
 
-    // 3. Derive 32-byte seed using HKDF
-    // Salt includes device fingerprint to ensure unique keys per device
-    const salt = new TextEncoder().encode(`InkBlob-hot-wallet-v1-${deviceFingerprint}`);
-    const info = new TextEncoder().encode('ed25519-seed');
+    // 3. Derive 32-byte seed using HKDF with proper context separation
+    // Fixed salt for protocol version
+    const salt = new TextEncoder().encode('InkBlob-hot-wallet-v1');
+    // Device fingerprint in info field (proper HKDF usage)
+    const info = new TextEncoder().encode(`device:${deviceFingerprint}:seed`);
 
     const seedBits = await crypto.subtle.deriveBits(
         {

@@ -33,7 +33,19 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         try {
             // 1. Derive Hot Wallet (requires user signature)
-            const fingerprint = deriveDeviceFingerprint();
+            // SECURITY FIX (P0): deriveDeviceFingerprint is now async with SHA-256
+            const fingerprint = await deriveDeviceFingerprint();
+
+            // Check for fingerprint format migration (old: "device_uuid", new: SHA-256 hex)
+            const oldFingerprint = localStorage.getItem('inkblob_last_fingerprint');
+            if (oldFingerprint && !oldFingerprint.match(/^[a-f0-9]{64}$/)) {
+                console.log('[SessionContext] Fingerprint format changed, clearing old session');
+                localStorage.removeItem('inkblob_last_fingerprint');
+                setSessionCap(null);
+                setEphemeralKeypair(null);
+            }
+            localStorage.setItem('inkblob_last_fingerprint', fingerprint);
+
             const message = new TextEncoder().encode(
                 `Authorize InkBlob Session\nDevice: ${fingerprint}\nWallet: ${currentAccount.address}`
             );

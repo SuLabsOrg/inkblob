@@ -3,7 +3,7 @@ import { deriveEncryptionKey } from '../crypto/keyDerivation';
 
 interface EncryptionContextValue {
     encryptionKey: CryptoKey | null;
-    deriveKey: (signature: string) => Promise<void>;
+    deriveKey: (signature: string, userAddress: string) => Promise<void>;
     clearKey: () => void;
 }
 
@@ -12,8 +12,12 @@ const EncryptionContext = createContext<EncryptionContextValue | null>(null);
 export const EncryptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
 
-    const deriveKey = async (signature: string) => {
-        const key = await deriveEncryptionKey(signature);
+    const deriveKey = async (signature: string, userAddress: string) => {
+        // SECURITY FIX (P1): Now requires user address for user-specific salt
+        if (!userAddress) {
+            throw new Error('User address is required to derive encryption key');
+        }
+        const key = await deriveEncryptionKey(signature, userAddress);
         setEncryptionKey(key);
     };
 

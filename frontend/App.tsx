@@ -1,22 +1,22 @@
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { useState, useEffect, useMemo } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { NoteList } from './components/NoteList';
+import { useEffect, useMemo, useState } from 'react';
 import { Editor } from './components/Editor';
-import { ThemeProvider } from './context/ThemeContext';
+import { LandingPage } from './components/LandingPage';
+import { Modal } from './components/Modal';
+import { NoteList } from './components/NoteList';
+import { Onboarding } from './components/Onboarding';
+import { Sidebar } from './components/Sidebar';
 import { EncryptionProvider, useEncryption } from './context/EncryptionContext';
 import { SessionProvider, useSession } from './context/SessionContext';
 import { SyncProvider } from './context/SyncContext';
-import { Onboarding } from './components/Onboarding';
-import { LandingPage } from './components/LandingPage';
-import { Modal } from './components/Modal';
-import { useFolders } from './hooks/useFolders';
-import { useNotes } from './hooks/useNotes';
-import { useNotebook } from './hooks/useNotebook';
-import { useSuiService } from './hooks/useSuiService';
-import { Folder, Note } from './types';
+import { ThemeProvider } from './context/ThemeContext';
 import { encryptText } from './crypto/encryption';
+import { useFolders } from './hooks/useFolders';
+import { useNotebook } from './hooks/useNotebook';
+import { useNotes } from './hooks/useNotes';
+import { useSuiService } from './hooks/useSuiService';
 import * as walrusService from './services/walrus';
+import { Folder, Note } from './types';
 
 // Mock Data (Fallback)
 const INITIAL_FOLDERS: Folder[] = [

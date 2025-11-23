@@ -13,13 +13,20 @@ import {
 import { SuiService, PACKAGE_ID } from '../services/suiService';
 import { retryUntil, RetryConditions } from '../utils/retry';
 
+interface SessionAuthResult {
+    sessionCap: any;
+    ephemeralKeypair: Ed25519Keypair;
+    hotWalletAddress: string;
+    expiresAt: number;
+}
+
 interface SessionContextValue {
     sessionCap: any | null;
     ephemeralKeypair: Ed25519Keypair | null;
     isSessionValid: boolean;
     sessionExpiresAt: number | null;
     hotWalletAddress: string | null;
-    authorizeSession: (notebookId: string) => Promise<void>;
+    authorizeSession: (notebookId: string) => Promise<SessionAuthResult>;
     revokeSession: () => Promise<void>;
     refreshSession: () => Promise<void>;
     isLoading: boolean;
@@ -179,10 +186,12 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
             });
 
             let expiresAt: number;
+            let finalSessionCap: any;
 
             if (validCap) {
                 // Use existing SessionCap
                 console.log('[SessionContext] Found valid existing SessionCap');
+                finalSessionCap = validCap.data;
                 setSessionCap(validCap.data);
                 const content = validCap.data?.content as any;
                 expiresAt = parseInt(content.fields.expires_at);
@@ -248,6 +257,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                         notebookId,
                         fingerprint: fingerprint.substring(0, 16) + '...',
                         hotWallet,
+                        senderAddress: currentAccount.address,
                         expiresAt,
                         suiAmount: 100000000,
                         walAmount: 500000000,
@@ -261,6 +271,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                             fingerprint,
                             hotWallet,
                             expiresAt,
+                            currentAccount.address, // Sender address to return remaining coins
                             100000000, // 0.1 SUI
                             500000000, // 0.5 WAL
                             walCoinId
@@ -310,6 +321,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     throw new Error('SessionCap creation succeeded but object not found on-chain after 10 retries');
                 }
 
+                finalSessionCap = newCap.data;
                 setSessionCap(newCap.data);
                 setSessionExpiresAt(expiresAt);
                 console.log('[SessionContext] SessionCap created successfully');
@@ -332,6 +344,15 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
             console.log('[SessionContext] Session authorized successfully');
             setIsLoading(false); // Ensure loading is reset on success
+
+            // CRITICAL: Return session info so caller can use it immediately
+            // without waiting for React state propagation
+            return {
+                sessionCap: finalSessionCap,
+                ephemeralKeypair: keypair,
+                hotWalletAddress: hotWallet,
+                expiresAt,
+            };
 
         } catch (error: any) {
             console.error('[SessionContext] Session authorization failed:', error);

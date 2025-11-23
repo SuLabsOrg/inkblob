@@ -243,6 +243,7 @@ export class SuiService {
         deviceFingerprint: string,
         hotWalletAddress: string,
         expiresAt: number,
+        senderAddress: string, // Sender's wallet address to return remaining coins
         suiAmount: number = 100000000, // 0.1 SUI
         walAmount: number = 500000000, // 0.5 WAL
         walCoinId: string // User must provide a WAL coin ID
@@ -251,6 +252,7 @@ export class SuiService {
             notebookId,
             deviceFingerprint: deviceFingerprint.substring(0, 16) + '...',
             hotWalletAddress,
+            senderAddress,
             expiresAt,
             suiAmount,
             walAmount,
@@ -303,7 +305,13 @@ export class SuiService {
 
         console.log('[SuiService] MoveCall completed - contract handles balances correctly:', moveCallResult);
 
-        console.log('[SuiService] Transaction built successfully');
+        // CRITICAL FIX: Transfer remaining coin balances back to sender
+        // After the contract splits and transfers payments to hot wallet,
+        // the remaining balances in suiCoin and walCoin must be handled.
+        // We transfer them back to the transaction sender (user's wallet).
+        tx.transferObjects([suiCoin, walCoin], tx.pure.address(senderAddress));
+
+        console.log('[SuiService] Transaction built successfully - remaining coins returned to sender');
         return tx;
     }
 

@@ -1,5 +1,6 @@
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromB64, toB64 } from '@mysten/sui/utils';
+import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 /**
  * Hot Wallet Storage with Encryption
@@ -86,7 +87,16 @@ export async function storeHotWallet(
     userAddress: string
 ): Promise<void> {
     // 1. Get private key bytes
-    const privateKeyBytes = keypair.export().privateKey;
+    // FIXED: getSecretKey() returns a bech32-encoded string (suiprivkey1...)
+    // We need to decode it to get the raw 32-byte private key
+    const secretKeyString = keypair.getSecretKey();
+    const { secretKey: privateKeyBytes } = decodeSuiPrivateKey(secretKeyString);
+
+    console.log('[HotWalletStorage] Decoded secret key:', {
+        stringLength: secretKeyString.length,
+        bytesLength: privateKeyBytes.length,
+        isUint8Array: privateKeyBytes instanceof Uint8Array,
+    });
 
     // 2. Derive encryption key from SEPARATE signature
     const encryptionKey = await deriveHotWalletEncryptionKey(encryptionSignature, userAddress);

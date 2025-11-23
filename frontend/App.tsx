@@ -194,6 +194,9 @@ function AppContent() {
     try {
       const encryptedTitle = await encryptText('New Note', encryptionKey);
 
+      // Track fresh session auth result (if we just authorized)
+      let sessionAuthResult = null;
+
       // Check session status and prompt for authorization if needed (same as handleSaveNote)
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
@@ -207,8 +210,8 @@ function AppContent() {
         if (userConfirmed) {
           try {
             console.log('[App] User confirmed, authorizing session...');
-            await authorizeSession(notebook.data.objectId);
-            console.log('[App] Session authorized successfully, continuing with note creation...');
+            sessionAuthResult = await authorizeSession(notebook.data.objectId);
+            console.log('[App] Session authorized successfully:', sessionAuthResult);
           } catch (authError: any) {
             console.error('[App] Session authorization failed:', authError);
 
@@ -233,6 +236,12 @@ function AppContent() {
             // Continue with main wallet mode (fallback)
             console.log('[App] Falling back to main wallet signing mode');
           }
+
+          // Store the session auth result for use below
+          // This ensures we use the fresh session info even if context state hasn't updated yet
+          if (sessionAuthResult) {
+            console.log('[App] Using fresh session auth result for note creation');
+          }
         } else {
           console.log('[App] User declined session authorization, using main wallet');
         }
@@ -247,16 +256,29 @@ function AppContent() {
       const contractFolderId = isValidFolderAddress(selectedFolderId) ? selectedFolderId : null;
 
       // Create transaction with session capability
-      if (isSessionValid && sessionCap && ephemeralKeypair) {
+      // CRITICAL: Use sessionAuthResult if available (just authorized), otherwise fall back to context state
+      const useSession = sessionAuthResult || (isSessionValid && sessionCap && ephemeralKeypair);
+      const activeSessionCap = sessionAuthResult?.sessionCap || sessionCap;
+      const activeKeypair = sessionAuthResult?.ephemeralKeypair || ephemeralKeypair;
+
+      console.log('[App] Session state check:', {
+        hasSessionAuthResult: !!sessionAuthResult,
+        isSessionValid,
+        hasSessionCap: !!activeSessionCap,
+        hasEphemeralKeypair: !!activeKeypair,
+        useSession: !!useSession
+      });
+
+      if (useSession && activeSessionCap && activeKeypair) {
         console.log('[App] Creating note with session authorization');
         const tx = suiService.createNoteTxWithSession(
           notebook.data.objectId,
-          sessionCap.objectId,
+          activeSessionCap.objectId,
           encryptedTitle,
           contractFolderId,
           blockchainNoteId // Pass the generated note ID
         );
-        await suiService.executeWithSession(tx, ephemeralKeypair);
+        await suiService.executeWithSession(tx, activeKeypair);
       } else {
         console.log('[App] Creating note with main wallet signing');
         const tx = suiService.createNoteTx(

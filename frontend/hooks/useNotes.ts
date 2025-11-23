@@ -1,9 +1,9 @@
+import { useSuiClient } from '@mysten/dapp-kit';
 import { useQuery } from '@tanstack/react-query';
-import { useNotebook } from './useNotebook';
 import { useEncryption } from '../context/EncryptionContext';
 import { decryptText } from '../crypto/decryption';
-import { useSuiClient } from '@mysten/dapp-kit';
 import { SuiService } from '../services/suiService';
+import { useNotebook } from './useNotebook';
 
 export interface Note {
     id: string;
@@ -28,11 +28,19 @@ export function useNotes() {
             try {
                 // 1. Fetch raw encrypted notes from Sui
                 const rawNotes = await suiService.fetchNotes(notebook.data.objectId);
+                console.debug('[useNotes] fetchNotes:', {
+                    rawNotes: rawNotes,
+                });
 
                 // 2. Decrypt and map to Note interface
                 const decryptedNotes = await Promise.all(rawNotes.map(async (rawNote) => {
+                    // Debug: Log raw note structure for investigation
+                    console.debug('[useNotes] decryptedNotes:', {
+                        note: rawNote,
+                    });
+                        
                     // Extract common fields outside try-catch to avoid scope issues
-                    const noteId = rawNote.id?.id || 'unknown';
+                    const noteId = rawNote.id || 'unknown';
                     const updatedAt = new Date(parseInt(rawNote.updated_at) || Date.now());
                     const blobId = rawNote.blob_id || '';
 

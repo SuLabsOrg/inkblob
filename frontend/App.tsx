@@ -409,7 +409,7 @@ function AppContent() {
         signerDefined: !!signer
       });
 
-      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey, signer);
+      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey, signer, 1);
       const blobId = result.blobId;
 
       // 2. Encrypt title
@@ -422,16 +422,25 @@ function AppContent() {
       };
       const contractFolderId = isValidFolderAddress(note.folderId) ? note.folderId : null;
 
-      if (isSessionValid && sessionCap && ephemeralKeypair) {
-        console.log('[App] Updating note with session authorization');
+      if (sessionAuthResult) {
+        console.log('[App] Updating note with session authorization', {
+          "notebook": notebook,
+          "sessionAuthResult": sessionAuthResult,
+          "note": note,
+          "id": id,
+          "blobId": blobId,
+          "encryptedTitle": encryptedTitle,
+          "contractFolderId": contractFolderId
+        });
         const tx = suiService.updateNoteTxWithSession(
           notebook.data.objectId,
-          sessionCap.objectId,
+          sessionAuthResult.sessionCap.objectId,
           id,
           blobId,
           encryptedTitle,
           contractFolderId
         );
+
         await suiService.executeWithSession(tx, ephemeralKeypair);
       } else {
         console.log('[App] Updating note with main wallet signing');

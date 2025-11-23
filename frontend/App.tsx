@@ -30,7 +30,7 @@ function AppContent() {
   const { data: notebook, isLoading: isNotebookLoading, refetch: refetchNotebook } = useNotebook();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const suiService = useSuiService();
-  const { isSessionValid, sessionCap, ephemeralKeypair } = useSession();
+  const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession } = useSession();
 
   // Hooks for data fetching
   const { data: fetchedFolders } = useFolders();
@@ -162,9 +162,21 @@ function AppContent() {
 
   // Actions
   const handleCreateNote = async () => {
+    // Generate a proper note ID that matches SUI address format (64 hex chars)
+    const generateNoteId = (): string => {
+      // Generate 64 random hex characters
+      const array = new Uint8Array(32); // 32 bytes = 64 hex chars
+      crypto.getRandomValues(array);
+      const hexArray = Array.from(array, byte => byte.toString(16).padStart(2, '0'));
+      const hex64 = hexArray.join('');
+      return `0x${hex64}`;
+    };
+
+    const blockchainNoteId = generateNoteId();
+
     // 1. Optimistic Update
     const newNote: Note = {
-      id: crypto.randomUUID(),
+      id: blockchainNoteId, // Use blockchain ID for consistency
       title: 'New Note',
       content: '',
       folderId: selectedFolderId === 'trash' || selectedFolderId === 'all' ? 'notes' : selectedFolderId,
@@ -181,9 +193,104 @@ function AppContent() {
 
     try {
       const encryptedTitle = await encryptText('New Note', encryptionKey);
-      const tx = suiService.createNoteTx(notebook.data.objectId, encryptedTitle, selectedFolderId === 'all' ? null : selectedFolderId);
 
-      await signAndExecuteTransaction({ transaction: tx });
+      // Track fresh session auth result (if we just authorized)
+      let sessionAuthResult = null;
+
+      // Check session status and prompt for authorization if needed (same as handleSaveNote)
+      if (!isSessionValid) {
+        console.log('[App] No valid session, prompting user for authorization...');
+
+        const userConfirmed = window.confirm(
+          'Enable frictionless note saving?\n\n' +
+          'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\n' +
+          'You will need to sign twice now, but future saves will be automatic.'
+        );
+
+        if (userConfirmed) {
+          try {
+            console.log('[App] User confirmed, authorizing session...');
+            sessionAuthResult = await authorizeSession(notebook.data.objectId);
+            console.log('[App] Session authorized successfully:', sessionAuthResult);
+          } catch (authError: any) {
+            console.error('[App] Session authorization failed:', authError);
+
+            // Special handling for WAL token errors
+            if (authError?.message?.includes('WAL')) {
+              alert(
+                'Session authorization requires WAL tokens.\n\n' +
+                'You can get WAL tokens from the testnet faucet, but for now we\'ll continue creating notes with regular wallet signing.\n\n' +
+                'Note: Each save will require a signature.'
+              );
+            } else if (authError?.message?.includes('User rejected')) {
+              console.log('[App] User rejected session authorization signature');
+              // Silent - user chose not to sign
+            } else {
+              alert(
+                'Session authorization failed.\n\n' +
+                'Continuing with regular wallet signing instead.\n\n' +
+                'Error: ' + (authError?.message || 'Unknown error')
+              );
+            }
+
+            // Continue with main wallet mode (fallback)
+            console.log('[App] Falling back to main wallet signing mode');
+          }
+
+          // Store the session auth result for use below
+          // This ensures we use the fresh session info even if context state hasn't updated yet
+          if (sessionAuthResult) {
+            console.log('[App] Using fresh session auth result for note creation');
+          }
+        } else {
+          console.log('[App] User declined session authorization, using main wallet');
+        }
+      }
+
+      // Only pass valid folder addresses to the contract
+      // Filter out special folders like 'all', 'notes', 'trash' which are UI-only
+      const isValidFolderAddress = (folderId: string) => {
+        return folderId && /^0x[0-9a-fA-F]{64}$/.test(folderId);
+      };
+
+      const contractFolderId = isValidFolderAddress(selectedFolderId) ? selectedFolderId : null;
+
+      // Create transaction with session capability
+      // CRITICAL: Use sessionAuthResult if available (just authorized), otherwise fall back to context state
+      const useSession = sessionAuthResult || (isSessionValid && sessionCap && ephemeralKeypair);
+      const activeSessionCap = sessionAuthResult?.sessionCap || sessionCap;
+      const activeKeypair = sessionAuthResult?.ephemeralKeypair || ephemeralKeypair;
+
+      console.log('[App] Session state check:', {
+        hasSessionAuthResult: !!sessionAuthResult,
+        isSessionValid,
+        hasSessionCap: !!activeSessionCap,
+        hasEphemeralKeypair: !!activeKeypair,
+        useSession: !!useSession
+      });
+
+      if (useSession && activeSessionCap && activeKeypair) {
+        console.log('[App] Creating note with session authorization');
+        const tx = suiService.createNoteTxWithSession(
+          notebook.data.objectId,
+          activeSessionCap.objectId,
+          encryptedTitle,
+          contractFolderId,
+          blockchainNoteId // Pass the generated note ID
+        );
+        await suiService.executeWithSession(tx, activeKeypair);
+      } else {
+        console.log('[App] Creating note with main wallet signing');
+        const tx = suiService.createNoteTx(
+          notebook.data.objectId,
+          encryptedTitle,
+          contractFolderId,
+          blockchainNoteId // Pass the generated note ID
+        );
+        await signAndExecuteTransaction({ transaction: tx });
+      }
+
+      console.log('Note created successfully!');
       // SyncContext will handle invalidation
     } catch (error) {
       console.error('Failed to create note:', error);
@@ -242,6 +349,50 @@ function AppContent() {
     if (!note) return;
 
     try {
+      // Check session status and prompt for authorization if needed
+      if (!isSessionValid) {
+        console.log('[App] No valid session, prompting user for authorization...');
+
+        const userConfirmed = window.confirm(
+          'Enable frictionless note saving?\n\n' +
+          'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\n' +
+          'You will need to sign twice now, but future saves will be automatic.'
+        );
+
+        if (userConfirmed) {
+          try {
+            console.log('[App] User confirmed, authorizing session...');
+            await authorizeSession(notebook.data.objectId);
+            console.log('[App] Session authorized successfully, continuing with save...');
+          } catch (authError: any) {
+            console.error('[App] Session authorization failed:', authError);
+
+            // Special handling for WAL token errors
+            if (authError?.message?.includes('WAL')) {
+              alert(
+                'Session authorization requires WAL tokens.\n\n' +
+                'You can get WAL tokens from the testnet faucet, but for now we\'ll continue saving with regular wallet signing.\n\n' +
+                'Note: Each save will require a signature.'
+              );
+            } else if (authError?.message?.includes('User rejected')) {
+              console.log('[App] User rejected session authorization signature');
+              // Silent - user chose not to sign
+            } else {
+              alert(
+                'Session authorization failed.\n\n' +
+                'Continuing with regular wallet signing instead.\n\n' +
+                'Error: ' + (authError?.message || 'Unknown error')
+              );
+            }
+
+            // Continue with main wallet mode (fallback)
+            console.log('[App] Falling back to main wallet signing mode');
+          }
+        } else {
+          console.log('[App] User declined session authorization, using main wallet');
+        }
+      }
+
       // 1. Upload to Walrus (always upload current content)
       const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey);
       const blobId = result.blobId;
@@ -250,19 +401,32 @@ function AppContent() {
       const encryptedTitle = await encryptText(note.title, encryptionKey);
 
       // 3. Update on Sui
-      const capId = isSessionValid && sessionCap ? sessionCap.objectId : null;
-      const tx = suiService.updateNoteTx(
-        notebook.data.objectId,
-        capId,
-        id,
-        blobId,
-        encryptedTitle,
-        note.folderId
-      );
+      // Only pass valid folder addresses to the contract
+      const isValidFolderAddress = (folderId: string) => {
+        return folderId && /^0x[0-9a-fA-F]{64}$/.test(folderId);
+      };
+      const contractFolderId = isValidFolderAddress(note.folderId) ? note.folderId : null;
 
-      if (isSessionValid && ephemeralKeypair) {
+      if (isSessionValid && sessionCap && ephemeralKeypair) {
+        console.log('[App] Updating note with session authorization');
+        const tx = suiService.updateNoteTxWithSession(
+          notebook.data.objectId,
+          sessionCap.objectId,
+          id,
+          blobId,
+          encryptedTitle,
+          contractFolderId
+        );
         await suiService.executeWithSession(tx, ephemeralKeypair);
       } else {
+        console.log('[App] Updating note with main wallet signing');
+        const tx = suiService.updateNoteTx(
+          notebook.data.objectId,
+          id,
+          blobId,
+          encryptedTitle,
+          contractFolderId
+        );
         await signAndExecuteTransaction({ transaction: tx });
       }
 

@@ -70,6 +70,27 @@ module inkblob::test_utils {
         scenario
     }
 
+    /// Mint SUI coin for testing
+    public fun mint_sui_coin(scenario: &mut Scenario, amount: u64): Coin<SUI> {
+        let sender = test_scenario::sender(scenario);
+        test_scenario::next_tx(scenario, sender);
+
+        // For testing, we create a coin by taking from test account's gas
+        let ctx = test_scenario::ctx(scenario);
+        test_scenario::take_from_sender<Coin<SUI>>(scenario)
+    }
+
+    /// Mint WAL coin for testing
+    public fun mint_wal_coin(scenario: &mut Scenario, amount: u64): Coin<WAL> {
+        let sender = test_scenario::sender(scenario);
+        test_scenario::next_tx(scenario, sender);
+
+        // For WAL, we need to create it differently. This is a simplified approach
+        // In a real test, you might need to use WAL's minting function
+        let ctx = test_scenario::ctx(scenario);
+        abort 1 // Placeholder - need proper WAL minting logic
+    }
+
     /// Create and setup a notebook for testing
     public fun create_test_notebook(
         scenario: &mut Scenario,

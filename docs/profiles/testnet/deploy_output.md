@@ -1,6 +1,9 @@
 make publish
 
-Transaction Digest: 9SQQCGgrA63qW8M873hDCDhS6KnQcVfFHEtrdCzcL5K4
+# Fixed Contract Deployment (2025-11-24)
+**Previous deployment had bugs - this is the corrected version**
+
+Transaction Digest: 6ZjQ6pXWUeNerCRAw8txcaBmEs3z2CFRUwX7t1cb8vzk
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Transaction Data                                                                                             │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -47,22 +50,22 @@ Transaction Digest: 9SQQCGgrA63qW8M873hDCDhS6KnQcVfFHEtrdCzcL5K4
 ╭───────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Transaction Effects                                                                               │
 ├───────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ Digest: 9SQQCGgrA63qW8M873hDCDhS6KnQcVfFHEtrdCzcL5K4                                              │
+│ Digest: 6ZjQ6pXWUeNerCRAw8txcaBmEs3z2CFRUwX7t1cb8vzk                                              │
 │ Status: Success                                                                                   │
 │ Executed Epoch: 927                                                                               │
 │                                                                                                   │
 │ Created Objects:                                                                                  │
 │  ┌──                                                                                              │
-│  │ ID: 0x2efc857109bc6ae765eae9bdf03760487455133678ad796e24042ab0884b91e4                         │
+│  │ ID: 0x4a43e3b53b4e683a666224e33d0bedf0ede58e983767d706f638ad5716bc02a1                         │
 │  │ Owner: Immutable                                                                               │
 │  │ Version: 1                                                                                     │
-│  │ Digest: J4qRvTRo3nSgguKvH6GSHB1QVJG5q4b8KdUr94GDJav3                                           │
+│  │ Digest: EExTJ91ooXYSBtndg4hzv11SVxvgMFUyA9ESyhdGr4uG                                           │
 │  └──                                                                                              │
 │  ┌──                                                                                              │
-│  │ ID: 0xf0931cc8d5ea46c715061ba74285614c759bc718c57b8b7010953ec63cf673a6                         │
+│  │ ID: 0x54d2b2c33453ebd42e4b74c3bb5b44ed184cdc2b91046bfb26c85dc0bf8edace                         │
 │  │ Owner: Account Address ( 0x59f0fbaaea0b2c89588239fff7f1ab581d0f72e11e6a0c5f8cd6a5a38531a631 )  │
-│  │ Version: 662944377                                                                             │
-│  │ Digest: 3a1YKbSTLUvUNkNacaEvFKE9pv5Yy5kxHxtbmeXkajfR                                           │
+│  │ Version: 662944378                                                                             │
+│  │ Digest: 5KcLgx283WqwrMduQw5j5aURRDAmpL8NhykP7DANN5xV                                           │
 │  └──                                                                                              │
 │ Mutated Objects:                                                                                  │
 │  ┌──                                                                                              │
@@ -99,12 +102,12 @@ Transaction Digest: 9SQQCGgrA63qW8M873hDCDhS6KnQcVfFHEtrdCzcL5K4
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ Created Objects:                                                                                 │
 │  ┌──                                                                                             │
-│  │ ObjectID: 0xf0931cc8d5ea46c715061ba74285614c759bc718c57b8b7010953ec63cf673a6                  │
+│  │ ObjectID: 0x54d2b2c33453ebd42e4b74c3bb5b44ed184cdc2b91046bfb26c85dc0bf8edace                  │
 │  │ Sender: 0x59f0fbaaea0b2c89588239fff7f1ab581d0f72e11e6a0c5f8cd6a5a38531a631                    │
 │  │ Owner: Account Address ( 0x59f0fbaaea0b2c89588239fff7f1ab581d0f72e11e6a0c5f8cd6a5a38531a631 ) │
 │  │ ObjectType: 0x2::package::UpgradeCap                                                          │
-│  │ Version: 662944377                                                                            │
-│  │ Digest: 3a1YKbSTLUvUNkNacaEvFKE9pv5Yy5kxHxtbmeXkajfR                                          │
+│  │ Version: 662944378                                                                            │
+│  │ Digest: 5KcLgx283WqwrMduQw5j5aURRDAmpL8NhykP7DANN5xV                                          │
 │  └──                                                                                             │
 │ Mutated Objects:                                                                                 │
 │  ┌──                                                                                             │
@@ -112,14 +115,14 @@ Transaction Digest: 9SQQCGgrA63qW8M873hDCDhS6KnQcVfFHEtrdCzcL5K4
 │  │ Sender: 0x59f0fbaaea0b2c89588239fff7f1ab581d0f72e11e6a0c5f8cd6a5a38531a631                    │
 │  │ Owner: Account Address ( 0x59f0fbaaea0b2c89588239fff7f1ab581d0f72e11e6a0c5f8cd6a5a38531a631 ) │
 │  │ ObjectType: 0x2::coin::Coin<0x2::sui::SUI>                                                    │
-│  │ Version: 662944377                                                                            │
-│  │ Digest: BzrVn7vTNvyYYQkjoKmqG2eeX7yWqd3ArGzLBpWGNc3w                                          │
+│  │ Version: 662944378                                                                            │
+│  │ Digest: 8R2GhzFYQUc9iqCB11fx8T47WA6yYfA9vBrDxcaLfWWa                                          │
 │  └──                                                                                             │
 │ Published Objects:                                                                               │
 │  ┌──                                                                                             │
-│  │ PackageID: 0x2efc857109bc6ae765eae9bdf03760487455133678ad796e24042ab0884b91e4                 │
+│  │ PackageID: 0x4a43e3b53b4e683a666224e33d0bedf0ede58e983767d706f638ad5716bc02a1                 │
 │  │ Version: 1                                                                                    │
-│  │ Digest: J4qRvTRo3nSgguKvH6GSHB1QVJG5q4b8KdUr94GDJav3                                          │
+│  │ Digest: EExTJ91ooXYSBtndg4hzv11SVxvgMFUyA9ESyhdGr4uG                                          │
 │  │ Modules: notebook                                                                             │
 │  └──                                                                                             │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -132,3 +135,28 @@ Transaction Digest: 9SQQCGgrA63qW8M873hDCDhS6KnQcVfFHEtrdCzcL5K4
 │  │ Amount: -62288680                                                                              │
 │  └──                                                                                              │
 ╰───────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+---
+
+## Deployment Summary
+
+**Fixed Contract Version (2025-11-24)**
+
+This deployment fixes critical bugs in the `authorize_session_and_fund` function that prevented SessionCap creation:
+
+### Issues Fixed:
+1. **UnusedValueWithoutDrop Error**: The previous contract improperly handled remaining coin balances after `coin::split`
+2. **Balance Management**: Contract now correctly handles remaining SUI and WAL tokens automatically
+3. **Transfer Logic**: Simplified to rely on Move's ownership system for proper balance returns
+
+### Key Changes:
+- Removed manual coin transfer attempts that caused compilation errors
+- Let Move's ownership system automatically return remaining balances to callers
+- Maintained proper SessionCap creation and funding to hot wallets
+
+### New Contract Details:
+- **Package ID**: `0x4a43e3b53b4e683a666224e33d0bedf0ede58e983767d706f638ad5716bc02a1`
+- **Upgrade Cap**: `0x54d2b2c33453ebd42e4b74c3bb5b44ed184cdc2b91046bfb26c85dc0bf8edace`
+- **Transaction Digest**: `6ZjQ6pXWUeNerCRAw8txcaBmEs3z2CFRUwX7t1cb8vzk`
+
+The contract now supports proper SessionCap creation without the previous `UnusedValueWithoutDrop` errors.

@@ -49,12 +49,12 @@ test: test-unit test-integration
 
 test-unit:
 	@echo "$(BLUE)Running unit tests...$(NC)"
-	sui move test "test_folder_depth_calculation|test_circular_reference_detection|test_arweave_transaction_id_validation|test_folder_depth_limit"
+	sui move test "test_folder_depth_calculation|test_circular_reference_detection|test_arweave_transaction_id_validation|test_folder_depth_limit" --silence-warnings --skip-fetch-latest-git-deps
 	@echo "$(GREEN)Unit tests completed!$(NC)"
 
 test-integration:
 	@echo "$(BLUE)Running integration tests...$(NC)"
-	sui move test "test_create_notebook|test_authorize_session|test_note_crud_operations|test_folder_operations|test_session_authorization|test_batch_reorder_folders"
+	sui move test "test_create_notebook|test_authorize_session|test_note_crud_operations|test_folder_operations|test_session_authorization|test_batch_reorder_folders" --silence-warnings --skip-fetch-latest-git-deps
 	@echo "$(GREEN)Integration tests completed!$(NC)"
 
 # Quick test (skip slow tests)

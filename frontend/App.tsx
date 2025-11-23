@@ -45,6 +45,10 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
+
   // Notebook initialization state
   const [isInitializingNotebook, setIsInitializingNotebook] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
@@ -220,59 +224,77 @@ function AppContent() {
       await signAndExecuteTransaction({ transaction: tx });
     } catch (error) {
       console.error('Failed to create folder:', error);
-      const confirmDeleteNote = async () => {
-        if (!deleteNoteId) return;
-        const id = deleteNoteId;
-        setDeleteNoteId(null);
-
-        // Optimistic delete
-        setNotes(prev => prev.filter(n => n.id !== id));
-        if (selecteInkBlobId === id) setSelecteInkBlobId(null);
-
-        if (!notebook?.data?.objectId) return;
-
-        try {
-          const tx = suiService.deleteNoteTx(notebook.data.objectId, id);
-          await signAndExecuteTransaction({ transaction: tx });
-        } catch (error) {
-          console.error('Failed to delete note:', error);
-          alert('Failed to delete note');
-        }
-      };
-
-      // --- Render Logic ---
-
-      // 1. Not Connected
-      if (!currentAccount) {
-        return <LandingPage />;
-      }
-
-      // 2. Connected, but Locked (No Encryption Key)
-      if (!encryptionKey) {
-        return <Onboarding mode="unlock" />;
-      }
-
-    } catch (error) {
-      console.error('Failed to update note:', error);
-      // Revert optimistic update?
+      alert('Failed to create folder');
+      // Revert optimistic update
+      setFolders(prev => prev.filter(f => f.id !== newFolder.id));
     }
   };
 
-  const handleDeleteNote = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this note?")) {
-      // Optimistic delete
-      setNotes(prev => prev.filter(n => n.id !== id));
-      if (selecteInkBlobId === id) setSelecteInkBlobId(null);
+  const handleUpdateNote = (id: string, updates: Partial<Note>) => {
+    // Optimistic update only - no network calls
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
+  };
 
-      if (!notebook?.data?.objectId) return;
+  const handleSaveNote = async (id: string) => {
+    if (!notebook?.data?.objectId || !encryptionKey) return;
 
-      try {
-        const tx = suiService.deleteNoteTx(notebook.data.objectId, id);
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+
+    try {
+      // 1. Upload to Walrus (always upload current content)
+      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey);
+      const blobId = result.blobId;
+
+      // 2. Encrypt title
+      const encryptedTitle = await encryptText(note.title, encryptionKey);
+
+      // 3. Update on Sui
+      const capId = isSessionValid && sessionCap ? sessionCap.objectId : null;
+      const tx = suiService.updateNoteTx(
+        notebook.data.objectId,
+        capId,
+        id,
+        blobId,
+        encryptedTitle,
+        note.folderId
+      );
+
+      if (isSessionValid && ephemeralKeypair) {
+        await suiService.executeWithSession(tx, ephemeralKeypair);
+      } else {
         await signAndExecuteTransaction({ transaction: tx });
-      } catch (error) {
-        console.error('Failed to delete note:', error);
-        alert('Failed to delete note');
       }
+
+      console.log('Note saved successfully!');
+
+    } catch (error) {
+      console.error('Failed to save note:', error);
+      alert('Failed to save note');
+    }
+  };
+
+  const handleDeleteNote = (id: string) => {
+    setDeleteNoteId(id);
+  };
+
+  const confirmDeleteNote = async () => {
+    if (!deleteNoteId) return;
+    const id = deleteNoteId;
+    setDeleteNoteId(null);
+
+    // Optimistic delete
+    setNotes(prev => prev.filter(n => n.id !== id));
+    if (selecteInkBlobId === id) setSelecteInkBlobId(null);
+
+    if (!notebook?.data?.objectId) return;
+
+    try {
+      const tx = suiService.deleteNoteTx(notebook.data.objectId, id);
+      await signAndExecuteTransaction({ transaction: tx });
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+      alert('Failed to delete note');
     }
   };
 
@@ -357,7 +379,7 @@ function AppContent() {
         folders={folders}
         selectedFolderId={selectedFolderId}
         onSelectFolder={setSelectedFolderId}
-        onCreateFolder={handleCreateFolder}
+        onCreateFolder={openCreateFolderModal}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
       />
@@ -367,116 +389,110 @@ function AppContent() {
           <div className="flex items-center gap-2">
             {/* Header Content */}
           </div>
-          );
-      }
-
-      // if (!notebook) {
-      //   return <Onboarding mode="initialize" onComplete={refetchNotebook} />;
-      // }
-
-      // 4. Main App (Unlocked & Initialized)
-      return (
-          <div className="flex h-screen bg-background text-foreground overflow-hidden">
-            <Sidebar
-              folders={folders}
-              selectedFolderId={selectedFolderId}
-              onSelectFolder={setSelectedFolderId}
-              onCreateFolder={openCreateFolderModal}
-              isOpen={sidebarOpen}
-            // onToggle={() => setSidebarOpen(!sidebarOpen)}
-            />
-
-            <div className="flex-1 flex flex-col min-w-0">
-              <div className="h-14 border-b flex items-center justify-between px-4 bg-card">
-                <div className="flex items-center gap-2">
-                  {/* Header Content */}
-                </div>
-                <div className="flex items-center gap-4">
-                  <ConnectButton />
-                </div>
-              </div>
-
-              <div className="flex-1 flex overflow-hidden">
-                <NoteList
-                  notes={filtereInkBlobs}
-                  selecteInkBlobId={selecteInkBlobId}
-                  onSelectNote={setSelecteInkBlobId}
-                  onCreateNote={handleCreateNote}
-                  searchQuery={searchQuery}
-            </div>
-            </div>
-
-            <Modal
-              isOpen={isFolderModalOpen}
-              onClose={() => setIsFolderModalOpen(false)}
-              title="Create New Folder"
-            >
-              <div className="flex flex-col gap-4">
-                <input
-                  type="text"
-                  placeholder="Folder Name"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  className="w-full bg-web3-bg/50 px-4 py-2 rounded-lg border border-web3-border focus:border-web3-primary focus:ring-1 focus:ring-web3-primary outline-none text-web3-text"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleCreateFolder();
-                  }}
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setIsFolderModalOpen(false)}
-                    className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCreateFolder}
-                    className="px-4 py-2 rounded-lg bg-web3-primary text-white hover:bg-web3-primary/90 transition-colors font-medium"
-                  >
-                    Create Folder
-                  </button>
-                </div>
-              </div>
-            </Modal>
-
-            <Modal
-              isOpen={!!deleteNoteId}
-              onClose={() => setDeleteNoteId(null)}
-              title="Delete Note"
-            >
-              <div className="flex flex-col gap-4">
-                <p className="text-web3-textMuted">Are you sure you want to delete this note? This action cannot be undone.</p>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setDeleteNoteId(null)}
-                    className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmDeleteNote}
-                    className="px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium border border-red-500/20"
-                  >
-                    Delete Note
-                  </button>
-                </div>
-              </div>
-            </Modal>
+          <div className="flex items-center gap-4">
+            <ConnectButton />
           </div>
-          );
-    }
+        </div>
 
-          export default function App() {
-      return (
-          <ThemeProvider>
-            <EncryptionProvider>
-              <SessionProvider>
-                <SyncProvider>
-                  <AppContent />
-                </SyncProvider>
-              </SessionProvider>
-            </EncryptionProvider>
-          </ThemeProvider>
-          );
-    }
+        <div className="flex-1 flex overflow-hidden">
+          <NoteList
+            notes={filtereInkBlobs}
+            selecteInkBlobId={selecteInkBlobId}
+            onSelectNote={setSelecteInkBlobId}
+            onCreateNote={handleCreateNote}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          />
+
+          <main className="flex-1 bg-background overflow-y-auto relative">
+            {selecteInkBlobId ? (
+              <Editor
+                note={notes.find(n => n.id === selecteInkBlobId)!}
+                onUpdateNote={handleUpdateNote}
+                onSave={handleSaveNote}
+                onDeleteNote={handleDeleteNote}
+                onCreateNote={handleCreateNote}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                Select a note or create a new one
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
+
+      <Modal
+        isOpen={isFolderModalOpen}
+        onClose={() => setIsFolderModalOpen(false)}
+        title="Create New Folder"
+      >
+        <div className="flex flex-col gap-4">
+          <input
+            type="text"
+            placeholder="Folder Name"
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            className="w-full bg-web3-bg/50 px-4 py-2 rounded-lg border border-web3-border focus:border-web3-primary focus:ring-1 focus:ring-web3-primary outline-none text-web3-text"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreateFolder();
+            }}
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setIsFolderModalOpen(false)}
+              className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreateFolder}
+              className="px-4 py-2 rounded-lg bg-web3-primary text-white hover:bg-web3-primary/90 transition-colors font-medium"
+            >
+              Create Folder
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!deleteNoteId}
+        onClose={() => setDeleteNoteId(null)}
+        title="Delete Note"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-web3-textMuted">Are you sure you want to delete this note? This action cannot be undone.</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setDeleteNoteId(null)}
+              className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDeleteNote}
+              className="px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium border border-red-500/20"
+            >
+              Delete Note
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <EncryptionProvider>
+        <SessionProvider>
+          <SyncProvider>
+            <AppContent />
+          </SyncProvider>
+        </SessionProvider>
+      </EncryptionProvider>
+    </ThemeProvider>
+  );
+}

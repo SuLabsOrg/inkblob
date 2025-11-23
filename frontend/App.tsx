@@ -30,7 +30,7 @@ function AppContent() {
   const { data: notebook, isLoading: isNotebookLoading, refetch: refetchNotebook } = useNotebook();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const suiService = useSuiService();
-  const { isSessionValid, sessionCap, ephemeralKeypair } = useSession();
+  const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession } = useSession();
 
   // Hooks for data fetching
   const { data: fetchedFolders } = useFolders();
@@ -242,6 +242,50 @@ function AppContent() {
     if (!note) return;
 
     try {
+      // Check session status and prompt for authorization if needed
+      if (!isSessionValid) {
+        console.log('[App] No valid session, prompting user for authorization...');
+
+        const userConfirmed = window.confirm(
+          'Enable frictionless note saving?\n\n' +
+          'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\n' +
+          'You will need to sign twice now, but future saves will be automatic.'
+        );
+
+        if (userConfirmed) {
+          try {
+            console.log('[App] User confirmed, authorizing session...');
+            await authorizeSession(notebook.data.objectId);
+            console.log('[App] Session authorized successfully, continuing with save...');
+          } catch (authError: any) {
+            console.error('[App] Session authorization failed:', authError);
+
+            // Special handling for WAL token errors
+            if (authError?.message?.includes('WAL')) {
+              alert(
+                'Session authorization requires WAL tokens.\n\n' +
+                'You can get WAL tokens from the testnet faucet, but for now we\'ll continue saving with regular wallet signing.\n\n' +
+                'Note: Each save will require a signature.'
+              );
+            } else if (authError?.message?.includes('User rejected')) {
+              console.log('[App] User rejected session authorization signature');
+              // Silent - user chose not to sign
+            } else {
+              alert(
+                'Session authorization failed.\n\n' +
+                'Continuing with regular wallet signing instead.\n\n' +
+                'Error: ' + (authError?.message || 'Unknown error')
+              );
+            }
+
+            // Continue with main wallet mode (fallback)
+            console.log('[App] Falling back to main wallet signing mode');
+          }
+        } else {
+          console.log('[App] User declined session authorization, using main wallet');
+        }
+      }
+
       // 1. Upload to Walrus (always upload current content)
       const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey);
       const blobId = result.blobId;

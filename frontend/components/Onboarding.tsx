@@ -19,7 +19,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
     const [isLoading, setIsLoading] = useState(false);
 
     const handleUnlock = async () => {
-        console.log('[Onboarding] Starting unlock process...');
+        if (!currentAccount) {
+            console.warn('[Onboarding] Unlock called but no current account');
+            return;
+        }
+
+        console.log('[Onboarding] Starting unlock process...', {
+            account: currentAccount.address,
+        });
         setIsLoading(true);
         try {
             console.log('[Onboarding] Requesting signature for key derivation...');
@@ -27,7 +34,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
             const { signature } = await signPersonalMessage({ message });
 
             console.log('[Onboarding] Signature received, deriving encryption key...');
-            await deriveKey(signature);
+            await deriveKey(signature, currentAccount.address);
 
             console.log('[Onboarding] Unlock successful, calling onComplete...');
             onComplete?.();

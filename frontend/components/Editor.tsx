@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Note } from '../types';
 import { Type, Bold, Italic, Underline, CheckSquare, Share, Trash, PenLine, Save } from 'lucide-react';
+import { useNoteContent } from '../hooks/useNoteContent';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -87,11 +88,14 @@ export const Editor: React.FC<EditorProps> = ({
   const [localTitle, setLocalTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Load note content from Walrus
+  const { data: noteContent, isLoading: isContentLoading, error: contentError } = useNoteContent(note?.blobId);
+
   const initialConfig = {
     namespace: 'InkBlobEditor',
     theme,
     onError,
-    editorState: null,
+    editorState: noteContent || null, // Use loaded content as initial state
   };
 
   useEffect(() => {
@@ -102,6 +106,19 @@ export const Editor: React.FC<EditorProps> = ({
     }
   }, [note]);
 
+  // Log content loading status
+  useEffect(() => {
+    if (note?.blobId) {
+      console.debug('[Editor] Content loading status:', {
+        blobId: note.blobId,
+        isLoading: isContentLoading,
+        hasError: !!contentError,
+        contentLength: noteContent?.length || 0,
+        error: contentError?.message
+      });
+    }
+  }, [note?.blobId, isContentLoading, contentError, noteContent?.length]);
+
   const handleSave = async () => {
     if (!note) return;
     setIsSaving(true);
@@ -111,6 +128,38 @@ export const Editor: React.FC<EditorProps> = ({
       setIsSaving(false);
     }
   };
+
+  // Show loading indicator while content is loading
+  if (note && isContentLoading) {
+    return (
+      <div className="flex-1 h-full flex items-center justify-center text-web3-textMuted flex-col gap-4 backdrop-blur-sm">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-web3-primary"></div>
+        <p className="font-medium text-lg">Loading note content...</p>
+        <p className="text-sm opacity-70">Decrypting from Walrus storage</p>
+      </div>
+    );
+  }
+
+  // Show error if content loading fails
+  if (note && contentError) {
+    return (
+      <div className="flex-1 h-full flex items-center justify-center text-web3-textMuted flex-col gap-4 backdrop-blur-sm">
+        <div className="p-6 rounded-full bg-red-500/10 border border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.1)]">
+          <Trash size={48} strokeWidth={1} className="text-red-400" />
+        </div>
+        <p className="font-medium text-lg">Failed to load note content</p>
+        <p className="text-sm opacity-70 text-center max-w-md">
+          {contentError.message || 'Unable to decrypt note from Walrus storage'}
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-web3-primary text-white rounded-lg hover:bg-web3-primary/80 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (!note) {
     return (

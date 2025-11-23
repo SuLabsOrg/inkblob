@@ -322,6 +322,10 @@ export class SuiService {
         tx: Transaction,
         keypair: any // Ed25519Keypair
     ): Promise<any> {
+        if (!keypair) {
+            throw new Error('executeWithSession: keypair is null or undefined. Cannot execute transaction without valid keypair.');
+        }
+
         tx.setSender(keypair.toSuiAddress());
 
         const { bytes, signature } = await tx.sign({

@@ -399,8 +399,8 @@ function AppContent() {
       // 1. Upload to Walrus (always upload current content)
       // Pass ephemeralKeypair if available to sign the upload transaction
       // Use fresh keypair if available (from just-authorized session), otherwise fall back to context state
-      const activeKeypair = sessionAuthResult?.ephemeralKeypair || (isSessionValid ? ephemeralKeypair : undefined);
-      const signer = activeKeypair;
+      const uploadKeypair = sessionAuthResult?.ephemeralKeypair || (isSessionValid ? ephemeralKeypair : undefined);
+      const signer = uploadKeypair;
 
       console.log('[App] Preparing upload with signer:', {
         isSessionValid,
@@ -441,7 +441,7 @@ function AppContent() {
           contractFolderId
         );
 
-        await suiService.executeWithSession(tx, ephemeralKeypair);
+        await suiService.executeWithSession(tx, sessionAuthResult.ephemeralKeypair);
       } else {
         console.log('[App] Updating note with main wallet signing');
         const tx = suiService.updateNoteTx(

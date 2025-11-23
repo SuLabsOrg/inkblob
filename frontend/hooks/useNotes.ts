@@ -54,18 +54,18 @@ export function useNotes() {
                         // Debug: Log raw note structure for investigation
                         console.debug('[useNotes] Processing note:', {
                             noteId,
-                            hasTitle: !!rawNote.title,
-                            titleLength: rawNote.title?.length || 0,
-                            titleType: typeof rawNote.title,
+                            hasTitle: !!rawNote.encrypted_title,
+                            titleLength: rawNote.encrypted_title?.length || 0,
+                            titleType: typeof rawNote.encrypted_title,
                             rawNoteStructure: Object.keys(rawNote)
                         });
 
                         // Check if title exists and is valid
-                        if (!rawNote.title || typeof rawNote.title !== 'string' || rawNote.title.trim() === '') {
+                        if (!rawNote.encrypted_title || typeof rawNote.encrypted_title !== 'string' || rawNote.encrypted_title.trim() === '') {
                             console.warn('[useNotes] Note has invalid or empty title:', {
                                 noteId,
-                                title: rawNote.title,
-                                titleType: typeof rawNote.title
+                                title: rawNote.encrypted_title,
+                                titleType: typeof rawNote.encrypted_title
                             });
 
                             // Return note with default title instead of throwing error
@@ -80,7 +80,7 @@ export function useNotes() {
                         }
 
                         // Decrypt title - now we know title is a valid string
-                        const title = await decryptText(rawNote.title, encryptionKey);
+                        const title = await decryptText(rawNote.encrypted_title, encryptionKey);
 
                         return {
                             id: noteId,
@@ -92,14 +92,14 @@ export function useNotes() {
                         } as Note;
                     } catch (e) {
                         // Enhanced error handling for decryption failures
-                        const titlePreview = rawNote.title ?
-                            (rawNote.title.substring(0, 20) + (rawNote.title.length > 20 ? '...' : '')) :
+                        const titlePreview = rawNote.encrypted_title ?
+                            (rawNote.encrypted_title.substring(0, 20) + (rawNote.encrypted_title.length > 20 ? '...' : '')) :
                             'null';
 
                         console.error('Failed to decrypt note:', {
                             noteId,
                             titlePreview,
-                            titleLength: rawNote.title?.length || 0,
+                            titleLength: rawNote.encrypted_title?.length || 0,
                             error: e.message,
                             errorType: e.constructor.name
                         });

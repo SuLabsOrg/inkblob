@@ -178,35 +178,50 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="max-w-3xl mx-auto pt-8 px-8 pb-20">
-            <div className="text-center text-xs text-web3-textMuted/60 mb-8 font-medium tracking-widest uppercase">
-              {formattedDate}
-            </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+          <div className="flex-1">
+            <div className="max-w-3xl mx-auto pt-8 px-8 pb-8">
+              <div className="text-center text-xs text-web3-textMuted/60 mb-8 font-medium tracking-widest uppercase">
+                {formattedDate}
+              </div>
 
-            <textarea
-              value={localTitle}
-              onChange={handleTitleChange}
-              placeholder="Title"
-              rows={1}
-              className="w-full text-4xl font-bold text-web3-text placeholder-web3-textMuted/30 resize-none border-none focus:ring-0 p-0 bg-transparent leading-tight mb-6 text-glow"
-              style={{ minHeight: '48px', overflow: 'hidden' }}
-              onInput={(e) => {
-                const target = e.target as HTMLTextAreaElement;
-                target.style.height = 'auto';
-                target.style.height = target.scrollHeight + 'px';
-              }}
-            />
-
-            <div className="relative min-h-[500px]">
-              <RichTextPlugin
-                contentEditable={<ContentEditable className="outline-none min-h-[500px] text-lg text-web3-text/90" />}
-                placeholder={<div className="absolute top-0 left-0 text-web3-textMuted/30 pointer-events-none text-lg">Start typing...</div>}
-                ErrorBoundary={SimpleErrorBoundary}
+              <textarea
+                value={localTitle}
+                onChange={handleTitleChange}
+                placeholder="Title"
+                rows={1}
+                className="w-full text-4xl font-bold text-web3-text placeholder-web3-textMuted/30 resize-none border-none focus:ring-0 p-0 bg-transparent leading-tight mb-6 text-glow"
+                style={{ minHeight: '48px', overflow: 'hidden' }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = target.scrollHeight + 'px';
+                }}
               />
-              <HistoryPlugin />
-              <OnChangePlugin onChange={handleEditorChange} />
+
+              <div className="relative min-h-[500px]">
+                <RichTextPlugin
+                  contentEditable={<ContentEditable className="outline-none min-h-[500px] text-lg text-web3-text/90" />}
+                  placeholder={<div className="absolute top-0 left-0 text-web3-textMuted/30 pointer-events-none text-lg">Start typing...</div>}
+                  ErrorBoundary={SimpleErrorBoundary}
+                />
+                <HistoryPlugin />
+                <OnChangePlugin onChange={handleEditorChange} />
+              </div>
             </div>
+          </div>
+
+          {/* Bottom Toolbar */}
+          <div className="h-12 border-t border-web3-border/50 flex items-center justify-end px-6 bg-web3-card/20">
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className={`hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all flex items-center gap-2 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title="Save Note"
+            >
+              <Save size={16} className={isSaving ? 'animate-pulse' : ''} />
+              <span className="text-sm">{isSaving ? 'Saving...' : 'Save'}</span>
+            </button>
           </div>
         </div>
       </div>

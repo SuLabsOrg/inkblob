@@ -1,0 +1,37 @@
+# InkBlob Makefile Configuration
+# Copy this file to Makefile.config and customize as needed
+
+# Package configuration
+PACKAGE_NAME := inkblob
+
+# Network configuration
+NETWORK := testnet
+GAS_BUDGET := 1000000000
+
+# Custom RPC endpoints (optional)
+# DEVNET_RPC := https://fullnode.devnet.sui.io:443
+# TESTNET_RPC := https://fullnode.testnet.sui.io:443
+# MAINNET_RPC := https://fullnode.mainnet.sui.io:443
+
+# Build options
+BUILD_FLAGS :=
+
+# Test options
+TEST_FLAGS :=
+UNIT_TEST_FILTER := test_folder_depth_calculation|test_circular_reference_detection|test_arweave_transaction_id_validation|test_folder_depth_limit
+INTEGRATION_TEST_FILTER := test_create_notebook|test_authorize_session|test_note_crud_operations
+
+# Enable/disable colored output
+ENABLE_COLORS := true
+
+# Custom commands (optional)
+# CUSTOM_PRE_BUILD := echo "Building..."
+# CUSTOM_POST_BUILD := echo "Build complete!"
+
+# Notification settings (optional)
+# NOTIFY_ON_BUILD := false
+# NOTIFY_ON_TEST := false
+
+# Docker settings (optional)
+# DOCKER_IMAGE := mysten/sui:latest
+# DOCKER_BUILD_CONTEXT := .

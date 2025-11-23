@@ -9,6 +9,7 @@ WAL = { local = "../vendor/wal" }
 
 [addresses]
 inkblob = "0x0"  # Will be updated after deployment
+wal = "0x8190b041122eb492bf63cb464476bd68c6b7e570a4079645a8b28732b6197a82"
 
 [dev-dependencies]
 # Note: Sui Framework includes test utilities

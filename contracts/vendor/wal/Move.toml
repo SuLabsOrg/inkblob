@@ -3,9 +3,10 @@ name = "WAL"
 license = "Apache-2.0"
 authors = ["Mysten Labs <build@mystenlabs.com>"]
 edition = "2024.beta"
+published-at = "0x8190b041122eb492bf63cb464476bd68c6b7e570a4079645a8b28732b6197a82"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.61.1" }
 
 [addresses]
-wal = "0x0"
+wal = "0x8190b041122eb492bf63cb464476bd68c6b7e570a4079645a8b28732b6197a82"

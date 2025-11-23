@@ -16,6 +16,7 @@ module inkblob::notebook_tests {
         create_additional_notebook,
         switch_active_notebook,
         authorize_session_and_fund,
+        authorize_session_simple,
         revoke_session,
         update_note_direct,
         update_note_with_session,
@@ -27,10 +28,16 @@ module inkblob::notebook_tests {
         reorder_folder_direct,
         batch_reorder_folders_direct,
         delete_folder_direct,
-        calculate_folder_depth,
-        would_create_cycle,
-        is_valid_arweave_tx_id,
         verify_authorization,
+        note_contains_id,
+        borrow_note,
+        get_note_blob_id,
+        get_note_title,
+        folder_contains_id,
+        borrow_folder,
+        get_notebook_notes,
+        get_notebook_folders,
+        create_test_id_from_address,
         E_NOT_OWNER,
         E_INVALID_EXPIRATION,
         E_SESSION_EXPIRED,
@@ -244,91 +251,7 @@ module inkblob::notebook_tests {
         abort 1 // Should not reach here
     }
 
-    #[test]
-    fun test_folder_depth_calculation() {
-        let mut scenario = test_scenario::begin(create_test_user());
-        let user = create_test_user();
-
-        let (notebook_id, _) = create_test_notebook(&mut scenario);
-
-        test_scenario::next_tx(scenario, &user);
-        let mut notebook = test_scenario::take_shared<Notebook>(scenario);
-
-        // Create folder hierarchy: Root -> Level1 -> Level2 -> Level3 -> Level4 -> Level5
-        let root_id = @0x100;
-        let level1_id = @0x101;
-        let level2_id = @0x102;
-        let level3_id = @0x103;
-        let level4_id = @0x104;
-        let level5_id = @0x105;
-        let level6_id = @0x106; // This should exceed limit
-
-        // Create root folder (depth 0)
-        create_folder_direct(
-            &mut notebook,
-            root_id,
-            string::utf8(b"Root"),
-            option::none(),
-            ctx(scenario)
-        );
-
-        // Create level 1 folder (depth 0 from parent, should be depth 1)
-        create_folder_direct(
-            &mut notebook,
-            level1_id,
-            string::utf8(b"Level1"),
-            option::some(root_id),
-            ctx(scenario)
-        );
-
-        // Create level 2 folder
-        create_folder_direct(
-            &mut notebook,
-            level2_id,
-            string::utf8(b"Level2"),
-            option::some(level1_id),
-            ctx(scenario)
-        );
-
-        // Create level 3 folder
-        create_folder_direct(
-            &mut notebook,
-            level3_id,
-            string::utf8(b"Level3"),
-            option::some(level2_id),
-            ctx(scenario)
-        );
-
-        // Create level 4 folder
-        create_folder_direct(
-            &mut notebook,
-            level4_id,
-            string::utf8(b"Level4"),
-            option::some(level3_id),
-            ctx(scenario)
-        );
-
-        // Create level 5 folder
-        create_folder_direct(
-            &mut notebook,
-            level5_id,
-            string::utf8(b"Level5"),
-            option::some(level4_id),
-            ctx(scenario)
-        );
-
-        // Test depth calculations
-        assert!(calculate_folder_depth(&notebook.folders, root_id) == 0);
-        assert!(calculate_folder_depth(&notebook.folders, level1_id) == 1);
-        assert!(calculate_folder_depth(&notebook.folders, level2_id) == 2);
-        assert!(calculate_folder_depth(&notebook.folders, level3_id) == 3);
-        assert!(calculate_folder_depth(&notebook.folders, level4_id) == 4);
-        assert!(calculate_folder_depth(&notebook.folders, level5_id) == 5);
-
-        test_scenario::return_shared(notebook);
-        test_scenario::end(scenario);
-    }
-
+  
     #[test]
     #[expected_failure(abort_code = E_MAX_FOLDER_DEPTH)]
     fun test_folder_depth_limit_exceeded() {
@@ -369,71 +292,8 @@ module inkblob::notebook_tests {
         abort 1 // Should not reach here
     }
 
-    #[test]
-    fun test_circular_reference_detection() {
-        let mut scenario = test_scenario::begin(create_test_user());
-        let user = create_test_user();
-
-        let (notebook_id, _) = create_test_notebook(&mut scenario);
-
-        test_scenario::next_tx(scenario, &user);
-        let mut notebook = test_scenario::take_shared<Notebook>(scenario);
-
-        // Create folders A -> B -> C
-        let folder_a = @0x200;
-        let folder_b = @0x201;
-        let folder_c = @0x202;
-
-        create_folder_direct(&mut notebook, folder_a, string::utf8(b"A"), option::none(), ctx(scenario));
-        create_folder_direct(&mut notebook, folder_b, string::utf8(b"B"), option::some(folder_a), ctx(scenario));
-        create_folder_direct(&mut notebook, folder_c, string::utf8(b"C"), option::some(folder_b), ctx(scenario));
-
-        // Test various circular reference scenarios
-        // Direct cycle: A -> A
-        assert!(would_create_cycle(&notebook.folders, folder_a, folder_a) == true);
-
-        // Indirect cycle: A -> B -> C -> A
-        assert!(would_create_cycle(&notebook.folders, folder_a, folder_c) == true);
-        assert!(would_create_cycle(&notebook.folders, folder_b, folder_a) == true);
-        assert!(would_create_cycle(&notebook.folders, folder_c, folder_b) == true);
-
-        // Valid moves
-        assert!(would_create_cycle(&notebook.folders, folder_b, folder_a) == true); // Would create cycle
-        assert!(would_create_cycle(&notebook.folders, folder_a, folder_b) == false); // Valid move A under B
-
-        test_scenario::return_shared(notebook);
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_arweave_transaction_id_validation() {
-        // Valid Arweave TX IDs (43 chars, base64url)
-        let valid_id = string::utf8(b"abcdefghijk123456789012345678901234567890123");
-        assert!(is_valid_arweave_tx_id(&valid_id) == true);
-
-        let valid_id_with_dash = string::utf8(b"abcdefghijk-23456789012345678901234567890123");
-        assert!(is_valid_arweave_tx_id(&valid_id_with_dash) == true);
-
-        let valid_id_with_underscore = string::utf8(b"abcdefghijk_23456789012345678901234567890123");
-        assert!(is_valid_arweave_tx_id(&valid_id_with_underscore) == true);
-
-        // Invalid Arweave TX IDs
-        let too_short = string::utf8(b"short");
-        assert!(is_valid_arweave_tx_id(&too_short) == false);
-
-        let too_long = string::utf8(b"abcdefghijk1234567890123456789012345678901234567890");
-        assert!(is_valid_arweave_tx_id(&too_long) == false);
-
-        let invalid_chars = string::utf8(b"abcdefg!@#$%^&*()1234567890123456789012345678901");
-        assert!(is_valid_arweave_tx_id(&invalid_chars) == false);
-
-        let with_plus = string::utf8(b"abcdefghijk+23456789012345678901234567890123");
-        assert!(is_valid_arweave_tx_id(&with_plus) == false);
-
-        let with_slash = string::utf8(b"abcdefghijk/23456789012345678901234567890123");
-        assert!(is_valid_arweave_tx_id(&with_slash) == false);
-    }
-
+  
+    
     #[test]
     #[expected_failure(abort_code = E_INVALID_AR_TX_ID)]
     fun test_update_note_ar_backup_invalid_id() {
@@ -494,11 +354,11 @@ module inkblob::notebook_tests {
         );
 
         // Verify note was created
-        assert!(table::contains(&notebook.notes, note_id));
+        assert!(note_contains_id(get_notebook_notes(&notebook), note_id));
 
-        let note = table::borrow(&notebook.notes, note_id);
-        assert!(note.blob_id == string::utf8(b"blob_id_123"));
-        assert!(note.encrypted_title == string::utf8(b"Test Note"));
+        let note = borrow_note(get_notebook_notes(&notebook), note_id);
+        assert!(get_note_blob_id(note) == string::utf8(b"blob_id_123"));
+        assert!(get_note_title(note) == string::utf8(b"Test Note"));
         assert!(note.created_at == note.updated_at);
 
         // Update the note
@@ -513,9 +373,9 @@ module inkblob::notebook_tests {
             ctx(scenario)
         );
 
-        let updated_note = table::borrow(&notebook.notes, note_id);
-        assert!(updated_note.blob_id == string::utf8(b"blob_id_456"));
-        assert!(updated_note.encrypted_title == string::utf8(b"Updated Note"));
+        let updated_note = borrow_note(get_notebook_notes(&notebook), note_id);
+        assert!(get_note_blob_id(updated_note) == string::utf8(b"blob_id_456"));
+        assert!(get_note_title(updated_note) == string::utf8(b"Updated Note"));
         assert!(updated_note.updated_at > updated_note.created_at);
 
         test_scenario::return_shared(notebook);
@@ -562,12 +422,12 @@ module inkblob::notebook_tests {
         );
 
         // Verify folders were created
-        assert!(table::contains(&notebook.folders, folder1_id));
-        assert!(table::contains(&notebook.folders, folder2_id));
-        assert!(table::contains(&notebook.folders, folder3_id));
+        assert!(folder_contains_id(get_notebook_folders(&notebook), folder1_id));
+        assert!(folder_contains_id(get_notebook_folders(&notebook), folder2_id));
+        assert!(folder_contains_id(get_notebook_folders(&notebook), folder3_id));
 
-        let folder1 = table::borrow(&notebook.folders, folder1_id);
-        let folder3 = table::borrow(&notebook.folders, folder3_id);
+        let folder1 = borrow_folder(get_notebook_folders(&notebook), folder1_id);
+        let folder3 = borrow_folder(get_notebook_folders(&notebook), folder3_id);
 
         assert!(folder3.parent_id == option::some(folder1_id));
 
@@ -576,8 +436,8 @@ module inkblob::notebook_tests {
         reorder_folder_direct(&mut notebook, folder1_id, 100, ctx(scenario));
         reorder_folder_direct(&mut notebook, folder2_id, 200, ctx(scenario));
 
-        let reordered_folder1 = table::borrow(&notebook.folders, folder1_id);
-        let reordered_folder2 = table::borrow(&notebook.folders, folder2_id);
+        let reordered_folder1 = borrow_folder(get_notebook_folders(&notebook), folder1_id);
+        let reordered_folder2 = borrow_folder(get_notebook_folders(&notebook), folder2_id);
 
         assert!(reordered_folder1.sort_order == 100);
         assert!(reordered_folder2.sort_order == 200);
@@ -653,9 +513,9 @@ module inkblob::notebook_tests {
         batch_reorder_folders_direct(&mut notebook, folder_ids, sort_orders, ctx(scenario));
 
         // Verify reorder
-        let reordered_folder1 = table::borrow(&notebook.folders, folder1_id);
-        let reordered_folder2 = table::borrow(&notebook.folders, folder2_id);
-        let reordered_folder3 = table::borrow(&notebook.folders, folder3_id);
+        let reordered_folder1 = borrow_folder(get_notebook_folders(&notebook), folder1_id);
+        let reordered_folder2 = borrow_folder(get_notebook_folders(&notebook), folder2_id);
+        let reordered_folder3 = borrow_folder(get_notebook_folders(&notebook), folder3_id);
 
         assert!(reordered_folder1.sort_order == 300);
         assert!(reordered_folder2.sort_order == 200);
@@ -713,14 +573,15 @@ module inkblob::notebook_tests {
             ctx(scenario)
         );
 
-        test_scenario::next_tx(scenario, &hot_wallet);
-        let session_cap = test_scenario::take_owned<SessionCap>(scenario);
+        test_scenario::next_tx(&mut scenario, &hot_wallet);
+        let session_cap = test_scenario::take_from_sender<SessionCap>(&mut scenario);
 
-        test_scenario::next_tx(scenario, &hot_wallet);
-        let mut notebook_shared = test_scenario::take_shared<Notebook>(scenario);
+        test_scenario::next_tx(&mut scenario, &hot_wallet);
+        let mut notebook_shared = test_scenario::take_shared<Notebook>(&mut scenario);
 
         // Create note using session cap
-        let note_id = @0x800;
+
+        let note_id = create_test_id_from_address(@0x800, test_scenario::ctx(&mut scenario));
         update_note_with_session(
             &mut notebook_shared,
             session_cap,
@@ -729,14 +590,14 @@ module inkblob::notebook_tests {
             string::utf8(b"blob_object_session"),
             string::utf8(b"Session Note"),
             option::none(),
-            ctx(scenario)
+            test_scenario::ctx(&mut scenario)
         );
 
         // Verify note was created
-        assert!(table::contains(&notebook_shared.notes, note_id));
+        assert!(note_contains_id(get_notebook_notes(&notebook_shared), note_id));
 
-        let note = table::borrow(&notebook_shared.notes, note_id);
-        assert!(note.encrypted_title == string::utf8(b"Session Note"));
+        let note = borrow_note(get_notebook_notes(&notebook_shared), note_id);
+        assert!(get_note_title(note) == string::utf8(b"Session Note"));
 
         test_scenario::return_shared(notebook_shared);
         test_scenario::return_shared(notebook);

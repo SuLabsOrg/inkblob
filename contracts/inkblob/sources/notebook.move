@@ -436,6 +436,262 @@ module inkblob::notebook {
         }
     }
 
+    // ========== Unit Tests ==========
+    #[test_only]
+    public fun create_test_notebook_direct(
+        notebook_name: string::String,
+        ctx: &mut TxContext
+    ): (Notebook, NotebookRegistry) {
+        let sender = tx_context::sender(ctx);
+        let now = tx_context::epoch_timestamp_ms(ctx);
+
+        // Create shared Notebook object
+        let notebook = Notebook {
+            id: object::new(ctx),
+            owner: sender,
+            notes: table::new(ctx),
+            folders: table::new(ctx),
+        };
+
+        // Create registry
+        let registry = NotebookRegistry {
+            id: object::new(ctx),
+            owner: sender,
+            notebooks: table::new(ctx),
+            active_notebook: notebook_name,
+            created_at: now,
+        };
+
+        (notebook, registry)
+    }
+
+    #[test_only]
+    public fun note_contains_id(notes: &Table<ID, Note>, note_id: ID): bool {
+        table::contains(notes, note_id)
+    }
+
+    #[test_only]
+    public fun borrow_note(notes: &Table<ID, Note>, note_id: ID): &Note {
+        table::borrow(notes, note_id)
+    }
+
+    #[test_only]
+    public fun get_note_blob_id(note: &Note): &string::String {
+        &note.blob_id
+    }
+
+    #[test_only]
+    public fun get_note_title(note: &Note): &string::String {
+        &note.encrypted_title
+    }
+
+    #[test_only]
+    public fun folder_contains_id(folders: &Table<ID, Folder>, folder_id: ID): bool {
+        table::contains(folders, folder_id)
+    }
+
+    #[test_only]
+    public fun borrow_folder(folders: &Table<ID, Folder>, folder_id: ID): &Folder {
+        table::borrow(folders, folder_id)
+    }
+
+    #[test_only]
+    public fun get_notebook_notes(notebook: &Notebook): &Table<ID, Note> {
+        &notebook.notes
+    }
+
+    #[test_only]
+    public fun get_notebook_folders(notebook: &Notebook): &Table<ID, Folder> {
+        &notebook.folders
+    }
+
+    #[test_only]
+    public fun create_test_id_from_address(addr: address, ctx: &mut TxContext): ID {
+        let obj = object::new(ctx);
+        let id = object::uid_to_inner(&obj);
+        // Clean up the object
+        object::delete(obj);
+        id
+    }
+
+    #[test_only]
+    #[test]
+    fun test_folder_depth_calculation() {
+        use sui::test_scenario::{Self, Scenario};
+        use sui::tx_context;
+
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        // Create folders table
+        let mut folders = table::new<ID, Folder>(ctx);
+
+        // Create test IDs
+        let root_id = object::uid_to_inner(&object::new(ctx));
+        let level1_id = object::uid_to_inner(&object::new(ctx));
+        let level2_id = object::uid_to_inner(&object::new(ctx));
+
+        // Create root folder (depth 0)
+        let root_folder = create_test_folder_with_id(
+            root_id,
+            string::utf8(b"Root"),
+            option::none(),
+            0
+        );
+        table::add(&mut folders, root_id, root_folder);
+
+        // Create level 1 folder (depth 1)
+        let level1_folder = create_test_folder_with_id(
+            level1_id,
+            string::utf8(b"Level1"),
+            option::some(root_id),
+            1
+        );
+        table::add(&mut folders, level1_id, level1_folder);
+
+        // Create level 2 folder (depth 2)
+        let level2_folder = create_test_folder_with_id(
+            level2_id,
+            string::utf8(b"Level2"),
+            option::some(level1_id),
+            2
+        );
+        table::add(&mut folders, level2_id, level2_folder);
+
+        // Test depth calculations
+        assert!(calculate_folder_depth(&folders, root_id) == 0);
+        assert!(calculate_folder_depth(&folders, level1_id) == 1);
+        assert!(calculate_folder_depth(&folders, level2_id) == 2);
+
+        // Clean up
+        table::destroy_empty(folders);
+        test_scenario::end(scenario);
+    }
+
+    #[test_only]
+    #[test]
+    fun test_circular_reference_detection() {
+        use sui::test_scenario::{Self, Scenario};
+        use sui::tx_context;
+
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        // Create folders table
+        let mut folders = table::new<ID, Folder>(ctx);
+
+        // Create test IDs
+        let folder_a_id = object::uid_to_inner(&object::new(ctx));
+        let folder_b_id = object::uid_to_inner(&object::new(ctx));
+        let folder_c_id = object::uid_to_inner(&object::new(ctx));
+
+        // Create folders A -> B -> C
+        let folder_a = create_test_folder_with_id(folder_a_id, string::utf8(b"A"), option::none(), 0);
+        let folder_b = create_test_folder_with_id(folder_b_id, string::utf8(b"B"), option::some(folder_a_id), 1);
+        let folder_c = create_test_folder_with_id(folder_c_id, string::utf8(b"C"), option::some(folder_b_id), 2);
+
+        table::add(&mut folders, folder_a_id, folder_a);
+        table::add(&mut folders, folder_b_id, folder_b);
+        table::add(&mut folders, folder_c_id, folder_c);
+
+        // Test various circular reference scenarios
+        // Direct cycle: A -> A
+        assert!(would_create_cycle(&folders, folder_a_id, folder_a_id) == true);
+
+        // Indirect cycle: A -> B -> C -> A
+        assert!(would_create_cycle(&folders, folder_a_id, folder_c_id) == true);
+        assert!(would_create_cycle(&folders, folder_b_id, folder_a_id) == true);
+        assert!(would_create_cycle(&folders, folder_c_id, folder_b_id) == true);
+
+        // Valid moves
+        assert!(would_create_cycle(&folders, folder_a_id, folder_b_id) == false);
+
+        // Clean up
+        table::destroy_empty(folders);
+        test_scenario::end(scenario);
+    }
+
+    #[test_only]
+    #[test]
+    fun test_arweave_transaction_id_validation() {
+        // Valid Arweave TX IDs (43 chars, base64url)
+        let valid_id = string::utf8(b"abcdefghijk123456789012345678901234567890123");
+        assert!(is_valid_arweave_tx_id(&valid_id) == true);
+
+        let valid_id_with_dash = string::utf8(b"abcdefghijk-23456789012345678901234567890123");
+        assert!(is_valid_arweave_tx_id(&valid_id_with_dash) == true);
+
+        let valid_id_with_underscore = string::utf8(b"abcdefghijk_23456789012345678901234567890123");
+        assert!(is_valid_arweave_tx_id(&valid_id_with_underscore) == true);
+
+        // Invalid Arweave TX IDs
+        let too_short = string::utf8(b"short");
+        assert!(is_valid_arweave_tx_id(&too_short) == false);
+
+        let too_long = string::utf8(b"abcdefghijk1234567890123456789012345678901234567890");
+        assert!(is_valid_arweave_tx_id(&too_long) == false);
+
+        let invalid_chars = string::utf8(b"abcdefg!@#$%^&*()1234567890123456789012345678901");
+        assert!(is_valid_arweave_tx_id(&invalid_chars) == false);
+
+        let with_plus = string::utf8(b"abcdefghijk+23456789012345678901234567890123");
+        assert!(is_valid_arweave_tx_id(&with_plus) == false);
+
+        let with_slash = string::utf8(b"abcdefghijk/23456789012345678901234567890123");
+        assert!(is_valid_arweave_tx_id(&with_slash) == false);
+    }
+
+    #[test_only]
+    #[test]
+    fun test_folder_depth_limit() {
+        use sui::test_scenario::{Self, Scenario};
+        use sui::tx_context;
+
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        // Create folders table
+        let mut folders = table::new<ID, Folder>(ctx);
+
+        // Create test IDs for folders up to depth 5
+        let root_id = object::uid_to_inner(&object::new(ctx));
+        let level1_id = object::uid_to_inner(&object::new(ctx));
+        let level2_id = object::uid_to_inner(&object::new(ctx));
+        let level3_id = object::uid_to_inner(&object::new(ctx));
+        let level4_id = object::uid_to_inner(&object::new(ctx));
+        let level5_id = object::uid_to_inner(&object::new(ctx));
+
+        // Create root folder (depth 0)
+        table::add(&mut folders, root_id, create_test_folder_with_id(root_id, string::utf8(b"Root"), option::none(), 0));
+
+        // Create level 1 folder (depth 1)
+        table::add(&mut folders, level1_id, create_test_folder_with_id(level1_id, string::utf8(b"Level1"), option::some(root_id), 1));
+
+        // Create level 2 folder (depth 2)
+        table::add(&mut folders, level2_id, create_test_folder_with_id(level2_id, string::utf8(b"Level2"), option::some(level1_id), 2));
+
+        // Create level 3 folder (depth 3)
+        table::add(&mut folders, level3_id, create_test_folder_with_id(level3_id, string::utf8(b"Level3"), option::some(level2_id), 3));
+
+        // Create level 4 folder (depth 4)
+        table::add(&mut folders, level4_id, create_test_folder_with_id(level4_id, string::utf8(b"Level4"), option::some(level3_id), 4));
+
+        // Create level 5 folder (depth 5)
+        table::add(&mut folders, level5_id, create_test_folder_with_id(level5_id, string::utf8(b"Level5"), option::some(level4_id), 5));
+
+        // Test depth calculations
+        assert!(calculate_folder_depth(&folders, root_id) == 0);
+        assert!(calculate_folder_depth(&folders, level1_id) == 1);
+        assert!(calculate_folder_depth(&folders, level2_id) == 2);
+        assert!(calculate_folder_depth(&folders, level3_id) == 3);
+        assert!(calculate_folder_depth(&folders, level4_id) == 4);
+        assert!(calculate_folder_depth(&folders, level5_id) == 5);
+
+        // Clean up
+        table::destroy_empty(folders);
+        test_scenario::end(scenario);
+    }
+
     // ========== Entry Functions ==========
 
     /// Create a new notebook with registry for cross-device discovery
@@ -614,6 +870,51 @@ module inkblob::notebook {
             owner: sender,
             sui_funded: sui_to_transfer,
             wal_funded: wal_to_transfer,
+        });
+    }
+
+    /// Authorize device-specific hot wallet (simple version without funding)
+    public entry fun authorize_session_simple(
+        notebook: &Notebook,
+        device_fingerprint: string::String,
+        hot_wallet_address: address,
+        expires_at: u64,
+        ctx: &mut TxContext
+    ) {
+        let sender = tx_context::sender(ctx);
+
+        // Verify caller is notebook owner
+        assert!(notebook.owner == sender, E_NOT_OWNER);
+
+        // Verify expiration is in the future
+        let now = tx_context::epoch_timestamp_ms(ctx);
+        assert!(expires_at > now, E_INVALID_EXPIRATION);
+
+        // Create SessionCap with device info
+        let session_cap = SessionCap {
+            id: object::new(ctx),
+            notebook_id: object::uid_to_inner(&notebook.id),
+            device_fingerprint,
+            hot_wallet_address,
+            expires_at,
+            created_at: now,
+            auto_funded: false,
+        };
+        let session_cap_id_value = object::uid_to_inner(&session_cap.id);
+
+        // Transfer SessionCap to hot wallet
+        transfer::transfer(session_cap, hot_wallet_address);
+
+        // Emit event
+        event::emit(SessionAuthorized {
+            notebook_id: object::uid_to_inner(&notebook.id),
+            session_cap_id: session_cap_id_value,
+            hot_wallet_address,
+            device_fingerprint,
+            expires_at,
+            owner: sender,
+            sui_funded: 0,
+            wal_funded: 0,
         });
     }
 

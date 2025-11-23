@@ -77,8 +77,8 @@ A privacy-focused, decentralized note-taking application that gives you true own
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/InkBlob.git
-cd InkBlob
+git clone https://github.com/SuLabsOrg/inkblob.git
+cd inkblob
 
 # Install frontend dependencies
 cd frontend

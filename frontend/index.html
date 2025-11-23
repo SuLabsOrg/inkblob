@@ -1,56 +1,66 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EtherNotes</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'ui-sans-serif', 'system-ui'],
-            },
-            colors: {
-              mac: {
-                sidebar: '#f7f7f5',
-                sidebarActive: '#eeb036', // The classic Notes yellow/orange
-                list: '#ffffff',
-                listHover: '#f5f5f5',
-                listActive: '#fbeba8',
-                text: '#1a1a1a',
-                textMuted: '#8a8a8a',
-                border: '#e5e5e5'
-              }
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inkblob</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            web3: {
+              bg: '#0a0a0f',
+              card: 'rgba(20, 20, 30, 0.6)',
+              cardHover: 'rgba(30, 30, 45, 0.8)',
+              border: 'rgba(255, 255, 255, 0.1)',
+              text: '#e0e0e0',
+              textMuted: '#a0a0a0',
+              primary: '#8b5cf6', // Violet
+              secondary: '#ec4899', // Pink
+              accent: '#06b6d4', // Cyan
             }
+          },
+          backgroundImage: {
+            'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+            'hero-glow': 'conic-gradient(from 180deg at 50% 50%, #2a8af6 0deg, #a853ba 180deg, #e92a67 360deg)',
           }
         }
       }
-    </script>
-    <style>
-      body {
-        overscroll-behavior: none; /* Prevent bounce on Mac */
-      }
-      /* Custom scrollbar for webkit to mimic Mac hidden scrollbars better */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: rgba(0, 0, 0, 0.1);
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgba(0, 0, 0, 0.2);
-      }
-    </style>
+    }
+  </script>
+  <style>
+    body {
+      overscroll-behavior: none;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -61,10 +71,12 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-white text-gray-900 h-screen overflow-hidden selection:bg-mac-sidebarActive selection:text-white">
-    <div id="root"></div>
+
+<body class="bg-web3-bg text-web3-text h-screen overflow-hidden selection:bg-web3-primary selection:text-white">
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>

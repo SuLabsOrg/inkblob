@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-web3-bg text-web3-text antialiased;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-web3-card backdrop-blur-md border border-web3-border;
+  }
+  
+  .glass-hover {
+    @apply hover:bg-web3-cardHover transition-colors duration-200;
+  }
+  
+  .text-glow {
+    text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  }
+}

@@ -9,9 +9,9 @@ interface SidebarProps {
   isOpen: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ 
-  folders, 
-  selectedFolderId, 
+export const Sidebar: React.FC<SidebarProps> = ({
+  folders,
+  selectedFolderId,
   onSelectFolder,
   isOpen
 }) => {
@@ -27,21 +27,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="w-64 bg-mac-sidebar h-full border-r border-mac-border flex flex-col pt-10 select-none transition-all duration-300 ease-in-out">
+    <div className="w-64 bg-web3-card/30 h-full border-r border-web3-border/50 flex flex-col pt-10 select-none transition-all duration-300 ease-in-out backdrop-blur-md">
       <div className="px-4 pb-2">
-        <h3 className="text-xs font-bold text-mac-textMuted uppercase tracking-wider mb-2 pl-2">iCloud</h3>
+        <h3 className="text-xs font-bold text-web3-textMuted uppercase tracking-wider mb-2 pl-2">Library</h3>
         <ul>
           {folders.map(folder => (
-            <li key={folder.id} className="mb-0.5">
+            <li key={folder.id} className="mb-1">
               <button
                 onClick={() => onSelectFolder(folder.id)}
-                className={`w-full flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-150 ${
-                  selectedFolderId === folder.id
-                    ? 'bg-mac-sidebarActive/20 text-yellow-700' // Mac active state simulation
-                    : 'text-mac-text hover:bg-black/5'
-                }`}
+                className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${selectedFolderId === folder.id
+                    ? 'bg-web3-primary/20 text-web3-primary shadow-[0_0_10px_rgba(139,92,246,0.2)]'
+                    : 'text-web3-textMuted hover:bg-web3-cardHover hover:text-web3-text'
+                  }`}
               >
-                <span className={`mr-2 ${selectedFolderId === folder.id ? 'text-yellow-600' : 'text-gray-500'}`}>
+                <span className={`mr-3 ${selectedFolderId === folder.id ? 'text-web3-primary' : 'text-web3-textMuted'}`}>
                   {getIcon(folder.icon)}
                 </span>
                 {folder.name}
@@ -50,14 +49,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ))}
         </ul>
       </div>
-      
-      {/* Simulation of bottom area */}
-      <div className="mt-auto p-4 border-t border-mac-border/50">
-         <div className="flex items-center text-xs text-gray-500 justify-between cursor-pointer hover:opacity-70 transition-opacity">
-            <span className="flex items-center gap-1">
-                <Plus size={14} /> New Folder
-            </span>
-         </div>
+
+      {/* Bottom area */}
+      <div className="mt-auto p-4 border-t border-web3-border/30">
+        <div className="flex items-center text-xs text-web3-textMuted justify-between cursor-pointer hover:text-web3-accent transition-colors group">
+          <span className="flex items-center gap-2">
+            <div className="p-1 rounded bg-web3-card border border-web3-border group-hover:border-web3-accent transition-colors">
+              <Plus size={12} />
+            </div>
+            New Folder
+          </span>
+        </div>
       </div>
     </div>
   );

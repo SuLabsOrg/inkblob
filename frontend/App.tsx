@@ -44,19 +44,19 @@ export default function App() {
 
     // Folder Filter
     if (selectedFolderId === 'trash') {
-        // In a real app, we'd have a 'deleted' flag. 
-        // For this demo, we'll just show empty or a specific set.
-        // Let's assume 'trash' is currently empty for simplicity unless we move things there.
-        // For the sake of the demo, let's just show all notes if 'all' is selected.
+      // In a real app, we'd have a 'deleted' flag. 
+      // For this demo, we'll just show empty or a specific set.
+      // Let's assume 'trash' is currently empty for simplicity unless we move things there.
+      // For the sake of the demo, let's just show all notes if 'all' is selected.
     } else if (selectedFolderId !== 'all') {
-        filtered = filtered.filter(n => n.folderId === selectedFolderId || selectedFolderId === 'all');
+      filtered = filtered.filter(n => n.folderId === selectedFolderId || selectedFolderId === 'all');
     }
 
     // Search Filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(n => 
-        n.title.toLowerCase().includes(q) || 
+      filtered = filtered.filter(n =>
+        n.title.toLowerCase().includes(q) ||
         n.content.toLowerCase().includes(q)
       );
     }
@@ -85,71 +85,76 @@ export default function App() {
   const handleDeleteNote = (id: string) => {
     // For this demo, we actually delete. In a full app, move to trash folder.
     if (window.confirm("Are you sure you want to delete this note?")) {
-        setNotes(prev => prev.filter(n => n.id !== id));
-        if (selecteInkBlobId === id) setSelecteInkBlobId(null);
+      setNotes(prev => prev.filter(n => n.id !== id));
+      if (selecteInkBlobId === id) setSelecteInkBlobId(null);
     }
   };
 
   const activeNote = notes.find(n => n.id === selecteInkBlobId) || null;
 
   return (
-    <div className="flex h-screen w-full bg-white text-mac-text font-sans overflow-hidden">
-      
-      {/* Sidebar (Collapsible) */}
-      <Sidebar 
-        folders={folders} 
-        selectedFolderId={selectedFolderId} 
-        onSelectFolder={(id) => {
+    <div className="flex h-screen w-full bg-web3-bg text-web3-text font-sans overflow-hidden bg-hero-glow bg-cover bg-no-repeat bg-fixed">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-3xl z-0"></div>
+
+      <div className="relative z-10 flex h-full w-full">
+        {/* Sidebar (Collapsible) */}
+        <Sidebar
+          folders={folders}
+          selectedFolderId={selectedFolderId}
+          onSelectFolder={(id) => {
             setSelectedFolderId(id);
             setSelecteInkBlobId(null);
-        }}
-        isOpen={sidebarOpen}
-      />
+          }}
+          isOpen={sidebarOpen}
+        />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
-        
-        {/* Global Toolbar / Drag Region */}
-        <div className="h-10 bg-mac-sidebar/50 backdrop-blur-md border-b border-mac-border flex items-center justify-between px-4 select-none">
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col h-full min-w-0 glass m-4 rounded-2xl overflow-hidden shadow-2xl border-web3-border/50">
+
+          {/* Global Toolbar / Drag Region */}
+          <div className="h-14 bg-web3-card/50 backdrop-blur-md border-b border-web3-border flex items-center justify-between px-4 select-none">
             <div className="flex items-center gap-3">
-                <button 
-                    onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className={`p-1 rounded hover:bg-black/10 transition-colors ${!sidebarOpen ? 'text-gray-400' : 'text-yellow-600'}`}
-                >
-                    <SidebarIcon size={18} />
-                </button>
-                <span className="text-sm font-semibold text-gray-500">
-                    {folders.find(f => f.id === selectedFolderId)?.name}
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className={`p-2 rounded-lg hover:bg-web3-cardHover transition-colors ${!sidebarOpen ? 'text-web3-textMuted' : 'text-web3-primary'}`}
+              >
+                <SidebarIcon size={20} />
+              </button>
+              <div className="flex items-center gap-2">
+                <img src="/logo.png" alt="Inkblob Logo" className="w-6 h-6 object-contain" />
+                <span className="text-sm font-semibold text-web3-text">
+                  {folders.find(f => f.id === selectedFolderId)?.name}
                 </span>
+              </div>
             </div>
-            
-            <button 
-                onClick={handleCreateNote}
-                className="p-1 text-gray-500 hover:text-yellow-600 transition-colors"
-                title="New Note"
-            >
-                <Edit size={18} />
-            </button>
-        </div>
 
-        {/* Note List & Editor Split */}
-        <div className="flex-1 flex overflow-hidden">
-            <NoteList 
-                notes={filtereInkBlobs}
-                selecteInkBlobId={selecteInkBlobId}
-                onSelectNote={setSelecteInkBlobId}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
+            <button
+              onClick={handleCreateNote}
+              className="p-2 text-web3-textMuted hover:text-web3-accent transition-colors hover:bg-web3-cardHover rounded-lg"
+              title="New Note"
+            >
+              <Edit size={20} />
+            </button>
+          </div>
+
+          {/* Note List & Editor Split */}
+          <div className="flex-1 flex overflow-hidden">
+            <NoteList
+              notes={filtereInkBlobs}
+              selecteInkBlobId={selecteInkBlobId}
+              onSelectNote={setSelecteInkBlobId}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
             />
-            <Editor 
-                note={activeNote}
-                onUpdateNote={handleUpdateNote}
-                onDeleteNote={handleDeleteNote}
-                onCreateNote={handleCreateNote}
+            <Editor
+              note={activeNote}
+              onUpdateNote={handleUpdateNote}
+              onDeleteNote={handleDeleteNote}
+              onCreateNote={handleCreateNote}
             />
+          </div>
         </div>
       </div>
-
     </div>
   );
 }

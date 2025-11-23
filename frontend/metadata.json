@@ -1,0 +1,5 @@
+{
+  "name": "EtherNotes",
+  "description": "A high-fidelity macOS Notes replica built with React and Tailwind, structured for seamless Web3/DApp integration.",
+  "requestFramePermissions": []
+}

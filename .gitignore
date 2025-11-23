@@ -1,0 +1,304 @@
+# InkBlob - Git Ignore File
+
+# ===================
+# Environment Files
+# ===================
+# Protect environment configuration from being committed
+.env
+.env.local
+.env.*.local
+
+# Keep example and template files
+!.env.example
+!.env.development
+!.env.staging  
+!.env.production
+
+# ===================
+# Dependencies
+# ===================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Go dependencies
+*.sum
+
+# ===================
+# Build Outputs
+# ===================
+build/
+dist/
+out/
+target/
+
+# Frontend build
+frontend/build/
+frontend/dist/
+
+# Go binaries
+matching-engine/matching-engine
+matching-engine/*.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Move build artifacts
+contracts/build/
+
+# ===================
+# Development Files
+# ===================
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===================
+# Logs
+# ===================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go test coverage
+coverage.out
+coverage.html
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Frontend coverage
+coverage/
+.nyc_output/
+
+# ===================
+# Database
+# ===================
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Database dumps
+*.sql
+*.dump
+
+# ===================
+# Security
+# ===================
+# Private keys and certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Wallet files
+*.wallet
+keystore/
+wallets/
+
+# API keys and secrets
+secrets/
+.secrets
+api-keys.txt
+
+# ===================
+# Docker
+# ===================
+# Docker override files
+docker-compose.override.yml
+
+# ===================
+# Testing
+# ===================
+# Test results
+test-results/
+junit.xml
+coverage.xml
+*.test
+
+# Contract test output files
+contracts/tests/output/
+contracts/tests/output/*
+
+# ===================
+# Temporary Files
+# ===================
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ===================
+# Sui Development
+# ===================
+# Sui client configuration (contains private keys)
+~/.sui/
+
+# Local network data
+.sui-local/
+
+
+# ===================
+# Node.js Development
+# ===================
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# ===================
+# Monitoring & Metrics
+# ===================
+# Prometheus data
+prometheus_data/
+
+# Grafana data
+grafana_data/
+
+# ===================
+# Backup Files
+# ===================
+# Database backups
+*.backup
+backups/
+
+# Configuration backups
+config-backup-*/
+
+# ===================
+# CI/CD
+# ===================
+# Deployment artifacts
+artifacts/
+deployment-*.json
+
+# ===================
+# Local Development
+# ===================
+# Local configuration overrides
+local.env
+.local
+
+# Development scripts
+dev-scripts/
+local-scripts/
+
+# ===================
+# Performance & Profiling
+# ===================
+# Go profiling files
+*.prof
+*.pprof
+
+# Node.js heap dumps
+*.heapsnapshot
+
+# ===================
+# Cache Directories
+# ===================
+# General cache
+.cache/
+
+# Build cache
+.build-cache/
+
+# Docker layer cache
+.docker-cache/
+
+# ===================
+# Lock Files (Keep Some)
+# ===================
+# Keep package lock files for reproducible builds
+!package-lock.json
+!yarn.lock
+!pnpm-lock.yaml
+!go.sum
+
+# But ignore local lock files
+*.lock.local
+
+# ===================
+# Sui Specific
+# ===================
+# Move package locks
+Move.lock
+
+# Sui transaction data
+.sui-tx-data/
+
+# ===================
+# Custom Ignores
+# ===================
+# Add project-specific ignores below this line
+
+# worktree
+.worktree
+
+# Playwright MCP
+.playwright-mcp
+
+# Memory Bank
+memory-bank/
+
+# Memory Bank
+memory-bank/
+
+# Open Spec
+openspec/
+features/
+
+# Cursor
+.cursor
+.cursorrules
+
+# Codex
+.codex
+AGENTS.md
+
+# Claude
+.claude
+CLAUDE.md
+
+# Qwen
+.qwen
+QWEN.md
+
+# Gemini
+.gemini
+GEMINI.md

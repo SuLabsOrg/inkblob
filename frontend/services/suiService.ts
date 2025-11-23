@@ -1,8 +1,11 @@
 import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 
-// Placeholder Package ID - Replace with actual deployed package ID
-export const PACKAGE_ID = '0x0';
+// Package ID from environment variable (deployed contract address)
+export const PACKAGE_ID = import.meta.env.VITE_SUI_PACKAGE_ID || '0x0';
+
+// Log package ID for debugging
+console.log('[SuiService] Using PACKAGE_ID:', PACKAGE_ID);
 
 export class SuiService {
     constructor(private client: SuiClient) { }
@@ -36,14 +39,47 @@ export class SuiService {
     }
 
     /**
-     * Create notebook transaction
+     * Query dynamic field from a Table
+     * @param tableId - The ID of the Table object
+     * @param key - The key to look up (for string keys)
      */
-    createNotebookTx(): Transaction {
+    async getDynamicFieldObject(tableId: string, key: string): Promise<any> {
+        console.log('[SuiService] Querying dynamic field:', { tableId, key });
+
+        try {
+            const result = await this.client.getDynamicFieldObject({
+                parentId: tableId,
+                name: {
+                    type: '0x1::string::String',  // Key type for string keys
+                    value: key,
+                },
+            });
+
+            console.log('[SuiService] Dynamic field query result:', result);
+            return result;
+        } catch (error) {
+            console.error('[SuiService] Error querying dynamic field:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Create notebook transaction
+     * @param notebookName - Name for the new notebook (will be visible on-chain)
+     */
+    createNotebookTx(notebookName: string = 'My Notebook'): Transaction {
+        console.log('[SuiService] Creating notebook transaction:', {
+            notebookName,
+            target: `${PACKAGE_ID}::notebook::create_notebook`,
+        });
+
         const tx = new Transaction();
 
         tx.moveCall({
             target: `${PACKAGE_ID}::notebook::create_notebook`,
-            arguments: [],
+            arguments: [
+                tx.pure.string(notebookName), // string::String parameter
+            ],
         });
 
         return tx;

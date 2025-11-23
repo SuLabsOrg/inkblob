@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Note } from '../types';
-import { Type, Bold, Italic, Underline, CheckSquare, Share, Trash, PenLine } from 'lucide-react';
+import { Type, Bold, Italic, Underline, CheckSquare, Share, Trash, PenLine, Save } from 'lucide-react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { EditorState } from 'lexical';
+import { EditorState, FORMAT_TEXT_COMMAND } from 'lexical';
 
 interface EditorProps {
   note: Note | null;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
+  onSave: (id: string) => Promise<void>;
   onDeleteNote: (id: string) => void;
   onCreateNote: () => void;
 }
@@ -43,13 +44,33 @@ function onError(error: Error) {
 const ToolbarPlugin = () => {
   const [editor] = useLexicalComposerContext();
 
+  const format = (formatType: 'bold' | 'italic' | 'underline') => {
+    editor.dispatchCommand(FORMAT_TEXT_COMMAND, formatType);
+  };
+
   return (
     <div className="flex items-center gap-2 text-web3-textMuted">
-      <button className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"><Type size={18} /></button>
-      <div className="h-4 w-[1px] bg-web3-border mx-2"></div>
-      <button className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"><Bold size={16} /></button>
-      <button className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"><Italic size={16} /></button>
-      <button className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"><Underline size={16} /></button>
+      <button
+        onClick={() => format('bold')}
+        className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"
+        title="Bold"
+      >
+        <Bold size={16} />
+      </button>
+      <button
+        onClick={() => format('italic')}
+        className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"
+        title="Italic"
+      >
+        <Italic size={16} />
+      </button>
+      <button
+        onClick={() => format('underline')}
+        className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"
+        title="Underline"
+      >
+        <Underline size={16} />
+      </button>
       <div className="h-4 w-[1px] bg-web3-border mx-2"></div>
       <button className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"><CheckSquare size={16} /></button>
     </div>
@@ -59,10 +80,12 @@ const ToolbarPlugin = () => {
 export const Editor: React.FC<EditorProps> = ({
   note,
   onUpdateNote,
+  onSave,
   onDeleteNote,
   onCreateNote
 }) => {
   const [localTitle, setLocalTitle] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const initialConfig = {
     namespace: 'InkBlobEditor',
@@ -78,6 +101,16 @@ export const Editor: React.FC<EditorProps> = ({
       setLocalTitle('');
     }
   }, [note]);
+
+  const handleSave = async () => {
+    if (!note) return;
+    setIsSaving(true);
+    try {
+      await onSave(note.id);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (!note) {
     return (
@@ -123,6 +156,15 @@ export const Editor: React.FC<EditorProps> = ({
         <div className="h-12 border-b border-web3-border/50 flex items-center justify-between px-6 bg-web3-card/20">
           <ToolbarPlugin />
           <div className="flex items-center gap-2 text-web3-textMuted">
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className={`hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title="Save Note"
+            >
+              <Save size={16} className={isSaving ? 'animate-pulse' : ''} />
+            </button>
+            <div className="h-4 w-[1px] bg-web3-border mx-2"></div>
             <button
               onClick={() => onDeleteNote(note.id)}
               className="hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-md transition-all"

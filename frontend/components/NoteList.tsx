@@ -1,11 +1,12 @@
 import React from 'react';
 import { Note } from '../types';
-import { Search } from 'lucide-react';
+import { Search, Plus } from 'lucide-react';
 
 interface NoteListProps {
   notes: Note[];
   selecteInkBlobId: string | null;
   onSelectNote: (id: string) => void;
+  onCreateNote: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
 }
@@ -14,6 +15,7 @@ export const NoteList: React.FC<NoteListProps> = ({
   notes,
   selecteInkBlobId,
   onSelectNote,
+  onCreateNote,
   searchQuery,
   onSearchChange
 }) => {
@@ -30,17 +32,24 @@ export const NoteList: React.FC<NoteListProps> = ({
   return (
     <div className="w-80 bg-web3-card/20 h-full border-r border-web3-border/50 flex flex-col backdrop-blur-sm">
       {/* Search Header */}
-      <div className="p-4 pb-2">
+      <div className="p-4 pb-2 space-y-3">
         <div className="relative group">
-          <Search className="absolute left-3 top-2 text-web3-textMuted group-focus-within:text-web3-accent transition-colors" size={14} />
+          <Search className="absolute left-3 top-2.5 text-web3-textMuted group-focus-within:text-web3-accent transition-colors" size={14} />
           <input
             type="text"
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full bg-web3-bg/50 pl-9 pr-3 py-1.5 text-sm rounded-lg border border-web3-border focus:border-web3-accent/50 focus:ring-1 focus:ring-web3-accent/50 text-web3-text placeholder-web3-textMuted transition-all outline-none"
+            className="w-full bg-web3-bg/50 pl-9 pr-3 py-2 text-sm rounded-lg border border-web3-border focus:border-web3-accent/50 focus:ring-1 focus:ring-web3-accent/50 text-web3-text placeholder-web3-textMuted transition-all outline-none"
           />
         </div>
+        <button
+          onClick={onCreateNote}
+          className="w-full py-2 bg-web3-primary text-white rounded-lg font-medium text-sm hover:bg-web3-primary/90 transition-all shadow-lg shadow-web3-primary/20 active:scale-[0.98] flex items-center justify-center gap-2"
+        >
+          <Plus size={16} />
+          Create New Note
+        </button>
       </div>
 
       {/* List */}
@@ -55,8 +64,8 @@ export const NoteList: React.FC<NoteListProps> = ({
               <button
                 onClick={() => onSelectNote(note.id)}
                 className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 group border border-transparent ${selecteInkBlobId === note.id
-                    ? 'bg-web3-cardHover border-web3-primary/30 shadow-lg'
-                    : 'hover:bg-web3-card/40 hover:border-web3-border/30'
+                  ? 'bg-web3-cardHover border-web3-primary/30 shadow-lg'
+                  : 'hover:bg-web3-card/40 hover:border-web3-border/30'
                   }`}
               >
                 <div className={`text-sm font-bold mb-1 transition-colors ${selecteInkBlobId === note.id ? 'text-web3-primary' : 'text-web3-text group-hover:text-white'}`}>

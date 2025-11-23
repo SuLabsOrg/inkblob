@@ -11,7 +11,24 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <script>
     tailwind.config = {
-    }
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            web3: {
+              bg: 'var(--bg-color)',
+              card: 'var(--card-bg)',
+              cardHover: 'var(--card-hover)',
+              border: 'var(--border-color)',
+              text: 'var(--text-color)',
+              textMuted: 'var(--text-muted)',
+              primary: 'var(--primary)',
+              secondary: 'var(--secondary)',
+              accent: 'var(--accent)',
+            }
+          }
+        }
+      }
     }
   </script>
   <style>

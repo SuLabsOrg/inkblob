@@ -45,9 +45,9 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
+  // Notebook initialization state
+  const [isInitializingNotebook, setIsInitializingNotebook] = useState(false);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
 
   // Effect to update state when hooks return data
   useEffect(() => {
@@ -61,6 +61,76 @@ function AppContent() {
       setNotes(fetchedNotes);
     }
   }, [fetchedNotes, currentAccount]);
+
+  // Auto-initialize notebook after unlock
+  useEffect(() => {
+    const initializeNotebook = async () => {
+      // Only run if:
+      // 1. User is connected
+      // 2. Encryption key is derived (unlocked)
+      // 3. Notebook query has completed (not loading)
+      // 4. No notebook exists
+      // 5. Not already initializing
+      if (!currentAccount || !encryptionKey || isNotebookLoading || notebook || isInitializingNotebook) {
+        return;
+      }
+
+      console.log('[App] Auto-initialization triggered:', {
+        account: currentAccount.address,
+        hasEncryptionKey: !!encryptionKey,
+        notebookExists: !!notebook,
+        isInitializing: isInitializingNotebook,
+      });
+
+      setIsInitializingNotebook(true);
+      setInitializationError(null);
+
+      try {
+        // Generate a default notebook name with timestamp
+        const notebookName = `My Notebook - ${new Date().toLocaleDateString()}`;
+
+        console.log('[App] Creating notebook transaction with name:', notebookName);
+        const tx = suiService.createNotebookTx(notebookName);
+
+        console.log('[App] Signing and executing transaction...');
+        const result = await signAndExecuteTransaction({
+          transaction: tx,
+        });
+
+        console.log('[App] Notebook creation successful:', result);
+
+        // Wait for blockchain state to propagate (2 seconds)
+        console.log('[App] Waiting for blockchain state propagation...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Refetch notebook to update UI
+        console.log('[App] Refetching notebook...');
+        const refetchResult = await refetchNotebook();
+
+        if (refetchResult.data) {
+          console.log('[App] Notebook initialization complete:', refetchResult.data);
+        } else {
+          console.warn('[App] Notebook refetch returned no data, but creation succeeded');
+        }
+
+      } catch (error) {
+        console.error('[App] Failed to initialize notebook:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setInitializationError(errorMessage);
+
+        // Show user-friendly error
+        alert(
+          'Failed to initialize your notebook on Sui blockchain.\n\n' +
+          'Error: ' + errorMessage + '\n\n' +
+          'Please try refreshing the page or check your wallet balance.'
+        );
+      } finally {
+        setIsInitializingNotebook(false);
+      }
+    };
+
+    initializeNotebook();
+  }, [currentAccount, encryptionKey, notebook, isNotebookLoading, isInitializingNotebook]);
 
   // Derived State
   const filtereInkBlobs = useMemo(() => {
@@ -182,14 +252,122 @@ function AppContent() {
         return <Onboarding mode="unlock" />;
       }
 
-      // 3. Unlocked, but No Notebook (New User)
-      // We need to wait for notebook query to finish
-      if (isNotebookLoading) {
-        return (
-          <div className="flex items-center justify-center h-screen bg-background text-foreground">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    } catch (error) {
+      console.error('Failed to update note:', error);
+      // Revert optimistic update?
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this note?")) {
+      // Optimistic delete
+      setNotes(prev => prev.filter(n => n.id !== id));
+      if (selecteInkBlobId === id) setSelecteInkBlobId(null);
+
+      if (!notebook?.data?.objectId) return;
+
+      try {
+        const tx = suiService.deleteNoteTx(notebook.data.objectId, id);
+        await signAndExecuteTransaction({ transaction: tx });
+      } catch (error) {
+        console.error('Failed to delete note:', error);
+        alert('Failed to delete note');
+      }
+    }
+  };
+
+  // --- Render Logic ---
+
+  // 1. Not Connected
+  if (!currentAccount) {
+    console.log('[App] Render: Landing page (no account)');
+    return <LandingPage />;
+  }
+
+  // 2. Connected, but Locked (No Encryption Key)
+  if (!encryptionKey) {
+    console.log('[App] Render: Unlock screen (no encryption key)');
+    return <Onboarding mode="unlock" />;
+  }
+
+  // 3. Unlocked, waiting for notebook query to finish
+  if (isNotebookLoading) {
+    console.log('[App] Render: Loading notebook...');
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-background text-foreground">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+        <p className="text-muted-foreground">Loading your notebook...</p>
+      </div>
+    );
+  }
+
+  // 4. Auto-initializing notebook (first time user)
+  if (isInitializingNotebook) {
+    console.log('[App] Render: Initializing notebook...');
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-background text-foreground">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+        <p className="text-lg font-medium mb-2">Initializing Your Notebook</p>
+        <p className="text-muted-foreground text-center max-w-md">
+          Creating your secure notebook on Sui blockchain...
+          <br />
+          This will only take a moment.
+        </p>
+      </div>
+    );
+  }
+
+  // 5. Initialization failed, show retry option
+  if (!notebook && initializationError) {
+    console.log('[App] Render: Initialization error screen');
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-background text-foreground p-4">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="mx-auto w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
           </div>
-        );
+          <h1 className="text-2xl font-bold">Initialization Failed</h1>
+          <p className="text-muted-foreground">
+            Failed to create your notebook on the blockchain.
+            <br />
+            <span className="text-sm">Error: {initializationError}</span>
+          </p>
+          <button
+            onClick={() => {
+              setInitializationError(null);
+              refetchNotebook();
+            }}
+            className="w-full py-3 px-4 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('[App] Render: Main app', { hasNotebook: !!notebook });
+
+  // 4. Main App (Unlocked & Initialized)
+  return (
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+      <Sidebar
+        folders={folders}
+        selectedFolderId={selectedFolderId}
+        onSelectFolder={setSelectedFolderId}
+        onCreateFolder={handleCreateFolder}
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+      />
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="h-14 border-b flex items-center justify-between px-4 bg-card">
+          <div className="flex items-center gap-2">
+            {/* Header Content */}
+          </div>
+          );
       }
 
       // if (!notebook) {
@@ -198,107 +376,107 @@ function AppContent() {
 
       // 4. Main App (Unlocked & Initialized)
       return (
-        <div className="flex h-screen bg-background text-foreground overflow-hidden">
-          <Sidebar
-            folders={folders}
-            selectedFolderId={selectedFolderId}
-            onSelectFolder={setSelectedFolderId}
-            onCreateFolder={openCreateFolderModal}
-            isOpen={sidebarOpen}
-          // onToggle={() => setSidebarOpen(!sidebarOpen)}
-          />
+          <div className="flex h-screen bg-background text-foreground overflow-hidden">
+            <Sidebar
+              folders={folders}
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={setSelectedFolderId}
+              onCreateFolder={openCreateFolderModal}
+              isOpen={sidebarOpen}
+            // onToggle={() => setSidebarOpen(!sidebarOpen)}
+            />
 
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="h-14 border-b flex items-center justify-between px-4 bg-card">
-              <div className="flex items-center gap-2">
-                {/* Header Content */}
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="h-14 border-b flex items-center justify-between px-4 bg-card">
+                <div className="flex items-center gap-2">
+                  {/* Header Content */}
+                </div>
+                <div className="flex items-center gap-4">
+                  <ConnectButton />
+                </div>
               </div>
-              <div className="flex items-center gap-4">
-                <ConnectButton />
-              </div>
+
+              <div className="flex-1 flex overflow-hidden">
+                <NoteList
+                  notes={filtereInkBlobs}
+                  selecteInkBlobId={selecteInkBlobId}
+                  onSelectNote={setSelecteInkBlobId}
+                  onCreateNote={handleCreateNote}
+                  searchQuery={searchQuery}
+            </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
-              <NoteList
-                notes={filtereInkBlobs}
-                selecteInkBlobId={selecteInkBlobId}
-                onSelectNote={setSelecteInkBlobId}
-                onCreateNote={handleCreateNote}
-                searchQuery={searchQuery}
-            </div>
+            <Modal
+              isOpen={isFolderModalOpen}
+              onClose={() => setIsFolderModalOpen(false)}
+              title="Create New Folder"
+            >
+              <div className="flex flex-col gap-4">
+                <input
+                  type="text"
+                  placeholder="Folder Name"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  className="w-full bg-web3-bg/50 px-4 py-2 rounded-lg border border-web3-border focus:border-web3-primary focus:ring-1 focus:ring-web3-primary outline-none text-web3-text"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateFolder();
+                  }}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setIsFolderModalOpen(false)}
+                    className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateFolder}
+                    className="px-4 py-2 rounded-lg bg-web3-primary text-white hover:bg-web3-primary/90 transition-colors font-medium"
+                  >
+                    Create Folder
+                  </button>
+                </div>
+              </div>
+            </Modal>
+
+            <Modal
+              isOpen={!!deleteNoteId}
+              onClose={() => setDeleteNoteId(null)}
+              title="Delete Note"
+            >
+              <div className="flex flex-col gap-4">
+                <p className="text-web3-textMuted">Are you sure you want to delete this note? This action cannot be undone.</p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setDeleteNoteId(null)}
+                    className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDeleteNote}
+                    className="px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium border border-red-500/20"
+                  >
+                    Delete Note
+                  </button>
+                </div>
+              </div>
+            </Modal>
           </div>
-
-          <Modal
-            isOpen={isFolderModalOpen}
-            onClose={() => setIsFolderModalOpen(false)}
-            title="Create New Folder"
-          >
-            <div className="flex flex-col gap-4">
-              <input
-                type="text"
-                placeholder="Folder Name"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                className="w-full bg-web3-bg/50 px-4 py-2 rounded-lg border border-web3-border focus:border-web3-primary focus:ring-1 focus:ring-web3-primary outline-none text-web3-text"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreateFolder();
-                }}
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setIsFolderModalOpen(false)}
-                  className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateFolder}
-                  className="px-4 py-2 rounded-lg bg-web3-primary text-white hover:bg-web3-primary/90 transition-colors font-medium"
-                >
-                  Create Folder
-                </button>
-              </div>
-            </div>
-          </Modal>
-
-          <Modal
-            isOpen={!!deleteNoteId}
-            onClose={() => setDeleteNoteId(null)}
-            title="Delete Note"
-          >
-            <div className="flex flex-col gap-4">
-              <p className="text-web3-textMuted">Are you sure you want to delete this note? This action cannot be undone.</p>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setDeleteNoteId(null)}
-                  className="px-4 py-2 rounded-lg text-web3-textMuted hover:bg-web3-cardHover transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteNote}
-                  className="px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium border border-red-500/20"
-                >
-                  Delete Note
-                </button>
-              </div>
-            </div>
-          </Modal>
-        </div>
-      );
+          );
     }
 
-    export default function App() {
+          export default function App() {
       return (
-        <ThemeProvider>
-          <EncryptionProvider>
-            <SessionProvider>
-              <SyncProvider>
-                <AppContent />
-              </SyncProvider>
-            </SessionProvider>
-          </EncryptionProvider>
-        </ThemeProvider>
-      );
+          <ThemeProvider>
+            <EncryptionProvider>
+              <SessionProvider>
+                <SyncProvider>
+                  <AppContent />
+                </SyncProvider>
+              </SessionProvider>
+            </EncryptionProvider>
+          </ThemeProvider>
+          );
     }

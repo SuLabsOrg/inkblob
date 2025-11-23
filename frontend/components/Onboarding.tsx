@@ -19,14 +19,20 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
     const [isLoading, setIsLoading] = useState(false);
 
     const handleUnlock = async () => {
+        console.log('[Onboarding] Starting unlock process...');
         setIsLoading(true);
         try {
+            console.log('[Onboarding] Requesting signature for key derivation...');
             const message = new TextEncoder().encode(KEY_DERIVATION_MESSAGE);
             const { signature } = await signPersonalMessage({ message });
+
+            console.log('[Onboarding] Signature received, deriving encryption key...');
             await deriveKey(signature);
+
+            console.log('[Onboarding] Unlock successful, calling onComplete...');
             onComplete?.();
         } catch (error) {
-            console.error('Unlock failed:', error);
+            console.error('[Onboarding] Unlock failed:', error);
             alert('Failed to unlock notebook. Please try again.');
         } finally {
             setIsLoading(false);
@@ -34,19 +40,31 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
     };
 
     const handleInitialize = async () => {
-        if (!currentAccount) return;
+        if (!currentAccount) {
+            console.warn('[Onboarding] Initialize called but no current account');
+            return;
+        }
+
+        console.log('[Onboarding] Starting notebook initialization...', {
+            account: currentAccount.address,
+        });
+
         setIsLoading(true);
         try {
-            const tx = suiService.createNotebookTx();
+            const notebookName = `My Notebook - ${new Date().toLocaleDateString()}`;
+
+            console.log('[Onboarding] Creating notebook transaction with name:', notebookName);
+            const tx = suiService.createNotebookTx(notebookName);
+
+            console.log('[Onboarding] Signing and executing transaction...');
             await signAndExecuteTransaction({
                 transaction: tx,
             });
-            // Wait for indexing/state update? 
-            // In a real app we might poll, but for now we rely on parent re-render or manual refresh
-            // Calling onComplete might trigger a refetch if parent handles it
+
+            console.log('[Onboarding] Notebook creation successful, calling onComplete...');
             onComplete?.();
         } catch (error) {
-            console.error('Initialization failed:', error);
+            console.error('[Onboarding] Initialization failed:', error);
             alert('Failed to create notebook. Please try again.');
         } finally {
             setIsLoading(false);

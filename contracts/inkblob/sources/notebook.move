@@ -1,4 +1,4 @@
-#[allow(unused_field, unused_use, unused_const, duplicate_alias)]
+#[allow(unused_field, unused_use, unused_const, duplicate_alias, lint(public_entry))]
 module inkblob::notebook {
     use sui::object::{Self, UID};
     use sui::tx_context::{Self, TxContext};
@@ -503,6 +503,36 @@ module inkblob::notebook {
     #[test_only]
     public fun get_notebook_folders(notebook: &Notebook): &Table<ID, Folder> {
         &notebook.folders
+    }
+
+    // Test helper functions
+    public fun get_notebook_id(notebook: &Notebook): ID {
+        object::uid_to_inner(&notebook.id)
+    }
+
+    public fun get_registry_id(registry: &NotebookRegistry): ID {
+        object::uid_to_inner(&registry.id)
+    }
+
+    public fun get_folder_sort_order(folder: &Folder): u64 {
+        folder.sort_order
+    }
+
+    // Additional test helper functions for accessing private fields
+    public fun get_registry_owner(registry: &NotebookRegistry): address {
+        registry.owner
+    }
+
+    public fun get_registry_active_notebook(registry: &NotebookRegistry): &string::String {
+        &registry.active_notebook
+    }
+
+    public fun get_registry_notebooks(registry: &NotebookRegistry): &Table<string::String, ID> {
+        &registry.notebooks
+    }
+
+    public fun get_notebook_owner(notebook: &Notebook): address {
+        notebook.owner
     }
 
     #[test_only]

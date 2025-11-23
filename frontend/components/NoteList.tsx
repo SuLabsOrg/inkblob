@@ -4,7 +4,7 @@ import { Search } from 'lucide-react';
 
 interface NoteListProps {
   notes: Note[];
-  selectedNoteId: string | null;
+  selecteInkBlobId: string | null;
   onSelectNote: (id: string) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -12,7 +12,7 @@ interface NoteListProps {
 
 export const NoteList: React.FC<NoteListProps> = ({
   notes,
-  selectedNoteId,
+  selecteInkBlobId,
   onSelectNote,
   searchQuery,
   onSearchChange
@@ -55,19 +55,19 @@ export const NoteList: React.FC<NoteListProps> = ({
               <button
                 onClick={() => onSelectNote(note.id)}
                 className={`w-full text-left px-4 py-3 rounded-lg transition-all duration-150 group ${
-                  selectedNoteId === note.id
+                  selecteInkBlobId === note.id
                     ? 'bg-yellow-100' // Classic active color
                     : 'hover:bg-mac-sidebar'
                 }`}
               >
-                <div className={`text-sm font-bold mb-0.5 ${selectedNoteId === note.id ? 'text-black' : 'text-gray-900'}`}>
+                <div className={`text-sm font-bold mb-0.5 ${selecteInkBlobId === note.id ? 'text-black' : 'text-gray-900'}`}>
                   {note.title || 'New Note'}
                 </div>
                 <div className="flex gap-2">
-                    <span className={`text-xs ${selectedNoteId === note.id ? 'text-gray-700' : 'text-gray-500'}`}>
+                    <span className={`text-xs ${selecteInkBlobId === note.id ? 'text-gray-700' : 'text-gray-500'}`}>
                         {formatDate(note.updatedAt)}
                     </span>
-                    <span className={`text-xs truncate ${selectedNoteId === note.id ? 'text-gray-600' : 'text-gray-400'}`}>
+                    <span className={`text-xs truncate ${selecteInkBlobId === note.id ? 'text-gray-600' : 'text-gray-400'}`}>
                         {note.content.substring(0, 30) || 'No additional text'}
                     </span>
                 </div>

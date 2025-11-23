@@ -34,12 +34,12 @@ export default function App() {
   const [folders] = useState<Folder[]>(INITIAL_FOLDERS);
   const [notes, setNotes] = useState<Note[]>(INITIAL_NOTES);
   const [selectedFolderId, setSelectedFolderId] = useState<string>('notes');
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [selecteInkBlobId, setSelecteInkBlobId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Derived State
-  const filteredNotes = useMemo(() => {
+  const filtereInkBlobs = useMemo(() => {
     let filtered = notes;
 
     // Folder Filter
@@ -75,7 +75,7 @@ export default function App() {
       updatedAt: new Date(),
     };
     setNotes([newNote, ...notes]);
-    setSelectedNoteId(newNote.id);
+    setSelecteInkBlobId(newNote.id);
   };
 
   const handleUpdateNote = (id: string, updates: Partial<Note>) => {
@@ -86,11 +86,11 @@ export default function App() {
     // For this demo, we actually delete. In a full app, move to trash folder.
     if (window.confirm("Are you sure you want to delete this note?")) {
         setNotes(prev => prev.filter(n => n.id !== id));
-        if (selectedNoteId === id) setSelectedNoteId(null);
+        if (selecteInkBlobId === id) setSelecteInkBlobId(null);
     }
   };
 
-  const activeNote = notes.find(n => n.id === selectedNoteId) || null;
+  const activeNote = notes.find(n => n.id === selecteInkBlobId) || null;
 
   return (
     <div className="flex h-screen w-full bg-white text-mac-text font-sans overflow-hidden">
@@ -101,7 +101,7 @@ export default function App() {
         selectedFolderId={selectedFolderId} 
         onSelectFolder={(id) => {
             setSelectedFolderId(id);
-            setSelectedNoteId(null);
+            setSelecteInkBlobId(null);
         }}
         isOpen={sidebarOpen}
       />
@@ -135,9 +135,9 @@ export default function App() {
         {/* Note List & Editor Split */}
         <div className="flex-1 flex overflow-hidden">
             <NoteList 
-                notes={filteredNotes}
-                selectedNoteId={selectedNoteId}
-                onSelectNote={setSelectedNoteId}
+                notes={filtereInkBlobs}
+                selecteInkBlobId={selecteInkBlobId}
+                onSelectNote={setSelecteInkBlobId}
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
             />

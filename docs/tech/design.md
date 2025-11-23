@@ -1,4 +1,4 @@
-# DNote - Technical Design Document
+# InkBlob - Technical Design Document
 
 **Version:** 1.0
 **Date:** 2025-11-23
@@ -11,7 +11,7 @@
 
 ### 1.1 Architecture Approach
 
-DNote follows a **three-layer decentralized architecture** with clear separation of concerns:
+InkBlob follows a **three-layer decentralized architecture** with clear separation of concerns:
 
 1. **Control Layer (Sui Blockchain)**: Manages metadata, access control, and state coordination
 2. **Storage Layer (Walrus Protocol)**: Handles encrypted content storage with redundancy
@@ -152,7 +152,7 @@ User → Wallet Connection → Key Derivation → Notebook Discovery
   2. Wallet extension prompts approval
   3. Wallet connection established
   4. App prompts signature for key derivation
-     Message: "Sign this message to derive encryption key for DNote"
+     Message: "Sign this message to derive encryption key for InkBlob"
   5. Derive AES-256 key using HKDF(signature)
   6. Query owned objects of type NotebookRegistry
   7. If registry found:
@@ -292,7 +292,7 @@ Device A Change → Blockchain Event → Device B Refresh
 ### 3.1 Module Structure
 
 ```move
-module dnote::notebook {
+module InkBlob::notebook {
     use sui::object::{Self, ID, UID};
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
@@ -888,7 +888,7 @@ export async function deriveEncryptionKey(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: new TextEncoder().encode('dnote-encryption-v1'), // Fixed salt for determinism
+      salt: new TextEncoder().encode('InkBlob-encryption-v1'), // Fixed salt for determinism
       info: new TextEncoder().encode('aes-256-gcm-key'),     // Context info
     },
     keyMaterial,
@@ -904,9 +904,9 @@ export async function deriveEncryptionKey(
  * Standard message for wallet signature (must be consistent)
  */
 export const KEY_DERIVATION_MESSAGE =
-  'Sign this message to derive your DNote encryption key.\n\n' +
+  'Sign this message to derive your InkBlob encryption key.\n\n' +
   'This signature will be used to encrypt and decrypt your notes.\n' +
-  'Only sign this message on the official DNote application.';
+  'Only sign this message on the official InkBlob application.';
 ```
 
 ### 4.2 Encryption (AES-256-GCM)
@@ -1094,16 +1094,16 @@ export async function decryptPrivateKey(
  * Store encrypted ephemeral key in localStorage
  */
 export function storeEphemeralKey(encryptedKey: string, expiresAt: number): void {
-  localStorage.setItem('dnote_ephemeral_key', encryptedKey);
-  localStorage.setItem('dnote_session_expires', expiresAt.toString());
+  localStorage.setItem('InkBlob_ephemeral_key', encryptedKey);
+  localStorage.setItem('InkBlob_session_expires', expiresAt.toString());
 }
 
 /**
  * Retrieve encrypted ephemeral key from localStorage
  */
 export function retrieveEphemeralKey(): { encryptedKey: string; expiresAt: number } | null {
-  const encryptedKey = localStorage.getItem('dnote_ephemeral_key');
-  const expiresAt = localStorage.getItem('dnote_session_expires');
+  const encryptedKey = localStorage.getItem('InkBlob_ephemeral_key');
+  const expiresAt = localStorage.getItem('InkBlob_session_expires');
 
   if (!encryptedKey || !expiresAt) {
     return null;
@@ -1125,8 +1125,8 @@ export function retrieveEphemeralKey(): { encryptedKey: string; expiresAt: numbe
  * Clear ephemeral key from storage
  */
 export function clearEphemeralKey(): void {
-  localStorage.removeItem('dnote_ephemeral_key');
-  localStorage.removeItem('dnote_session_expires');
+  localStorage.removeItem('InkBlob_ephemeral_key');
+  localStorage.removeItem('InkBlob_session_expires');
 }
 ```
 
@@ -1220,7 +1220,7 @@ export async function uploadBlob(
 /**
  * Upload note content (encrypt + upload)
  */
-export async function uploadNoteContent(
+export async function uploaInkBlobContent(
   plaintext: string,
   encryptionKey: CryptoKey,
   epochs?: number
@@ -1260,7 +1260,7 @@ export async function downloadBlob(blobId: string): Promise<Uint8Array> {
 /**
  * Download and decrypt note content
  */
-export async function downloadNoteContent(
+export async function downloaInkBlobContent(
   blobId: string,
   decryptionKey: CryptoKey
 ): Promise<string> {
@@ -1602,7 +1602,7 @@ export const NoteEditor: React.FC<{ noteId: string | null }> = ({ noteId }) => {
       const jsonContent = content;
 
       // 2. Encrypt and upload to Walrus
-      const { blobId } = await uploadNoteContent(jsonContent, encryptionKey);
+      const { blobId } = await uploaInkBlobContent(jsonContent, encryptionKey);
 
       // 3. Encrypt title
       const title = extractTitle(jsonContent);
@@ -2444,7 +2444,7 @@ curl --location --request POST 'https://faucet.testnet.sui.io/gas' \
 
 # 5. Clone and setup project
 git clone <repo-url>
-cd dnote
+cd InkBlob
 pnpm install
 
 # 6. Build smart contracts

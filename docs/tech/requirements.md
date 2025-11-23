@@ -1,4 +1,4 @@
-# DNote - Requirements Specification
+# InkBlob - Requirements Specification
 ## Decentralized Note-Taking Application on Sui and Walrus
 
 **Version:** 1.3
@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-DNote is a decentralized note-taking application that leverages Sui blockchain for state management and access control, combined with Walrus protocol for encrypted content storage. This specification defines the core architecture and essential requirements for a simplified Minimum Viable Product (MVP).
+InkBlob is a decentralized note-taking application that leverages Sui blockchain for state management and access control, combined with Walrus protocol for encrypted content storage. This specification defines the core architecture and essential requirements for a simplified Minimum Viable Product (MVP).
 
 ### 1.1 Core Value Proposition
 - **Data Sovereignty**: Users maintain full control of their encrypted notes

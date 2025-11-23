@@ -2,11 +2,16 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { Editor } from './components/Editor';
+import { Header } from './components/Header';
 import { Note, Folder } from './types';
-import { Sidebar as SidebarIcon, Edit } from 'lucide-react';
+import { useFolders } from './hooks/useFolders';
+import { useNotes } from './hooks/useNotes';
+import { useCurrentAccount } from '@mysten/dapp-kit';
+import { ThemeProvider } from './context/ThemeContext';
 
+// Mock data for fallback
 const INITIAL_FOLDERS: Folder[] = [
-  { id: 'all', name: 'All iCloud', icon: 'archive', type: 'system' },
+  { id: 'all', name: 'All Notes', icon: 'archive', type: 'system' },
   { id: 'notes', name: 'Notes', icon: 'folder', type: 'system' },
   { id: 'smart', name: 'Smart Folder', icon: 'smart', type: 'user' },
   { id: 'trash', name: 'Recently Deleted', icon: 'trash', type: 'system' },
@@ -30,13 +35,36 @@ const INITIAL_NOTES: Note[] = [
 ];
 
 export default function App() {
+  const currentAccount = useCurrentAccount();
+
+  // Hooks for data fetching
+  const { data: fetchedFolders } = useFolders();
+  const { data: fetchedNotes } = useNotes();
+
   // State
-  const [folders] = useState<Folder[]>(INITIAL_FOLDERS);
+  // Use fetched data if available, otherwise mock data (or empty if connected but no data)
+  // For MVP, we'll merge or toggle. 
+  // If wallet connected, try to use fetched data. If not, use local mock.
+  const [folders, setFolders] = useState<Folder[]>(INITIAL_FOLDERS);
   const [notes, setNotes] = useState<Note[]>(INITIAL_NOTES);
+
   const [selectedFolderId, setSelectedFolderId] = useState<string>('notes');
   const [selecteInkBlobId, setSelecteInkBlobId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Effect to update state when hooks return data
+  useEffect(() => {
+    if (currentAccount && fetchedFolders && fetchedFolders.length > 0) {
+      setFolders(fetchedFolders);
+    }
+  }, [fetchedFolders, currentAccount]);
+
+  useEffect(() => {
+    if (currentAccount && fetchedNotes && fetchedNotes.length > 0) {
+      setNotes(fetchedNotes);
+    }
+  }, [fetchedNotes, currentAccount]);
 
   // Derived State
   const filtereInkBlobs = useMemo(() => {
@@ -44,10 +72,7 @@ export default function App() {
 
     // Folder Filter
     if (selectedFolderId === 'trash') {
-      // In a real app, we'd have a 'deleted' flag. 
-      // For this demo, we'll just show empty or a specific set.
-      // Let's assume 'trash' is currently empty for simplicity unless we move things there.
-      // For the sake of the demo, let's just show all notes if 'all' is selected.
+      // Trash logic
     } else if (selectedFolderId !== 'all') {
       filtered = filtered.filter(n => n.folderId === selectedFolderId || selectedFolderId === 'all');
     }
@@ -76,85 +101,91 @@ export default function App() {
     };
     setNotes([newNote, ...notes]);
     setSelecteInkBlobId(newNote.id);
+
+    // TODO: Call suiService.createNoteTx() and walrusService.uploadInkBlobContent()
+  };
+
+  const handleCreateFolder = () => {
+    const name = prompt("Enter folder name:");
+    if (name) {
+      const newFolder: Folder = {
+        id: crypto.randomUUID(),
+        name,
+        icon: 'folder',
+        type: 'user'
+      };
+      setFolders([...folders, newFolder]);
+      // TODO: Call suiService.createFolderTx()
+    }
   };
 
   const handleUpdateNote = (id: string, updates: Partial<Note>) => {
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
+
+    // TODO: Implement Debounced Auto-save
+    // 1. Encrypt content
+    // 2. Upload to Walrus -> get Blob ID
+    // 3. Update Note Object on Sui with new Blob ID
   };
 
   const handleDeleteNote = (id: string) => {
-    // For this demo, we actually delete. In a full app, move to trash folder.
     if (window.confirm("Are you sure you want to delete this note?")) {
       setNotes(prev => prev.filter(n => n.id !== id));
       if (selecteInkBlobId === id) setSelecteInkBlobId(null);
+      // TODO: Call suiService.deleteNoteTx()
     }
   };
 
   const activeNote = notes.find(n => n.id === selecteInkBlobId) || null;
 
   return (
-    <div className="flex h-screen w-full bg-web3-bg text-web3-text font-sans overflow-hidden bg-hero-glow bg-cover bg-no-repeat bg-fixed">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-3xl z-0"></div>
+    <ThemeProvider>
+      <div className="flex h-screen w-full bg-web3-bg text-web3-text font-sans overflow-hidden bg-hero-glow bg-cover bg-no-repeat bg-fixed transition-colors duration-300">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-3xl z-0 dark:bg-black/80 bg-white/60"></div>
 
-      <div className="relative z-10 flex h-full w-full">
-        {/* Sidebar (Collapsible) */}
-        <Sidebar
-          folders={folders}
-          selectedFolderId={selectedFolderId}
-          onSelectFolder={(id) => {
-            setSelectedFolderId(id);
-            setSelecteInkBlobId(null);
-          }}
-          isOpen={sidebarOpen}
-        />
+        <div className="relative z-10 flex h-full w-full">
+          {/* Sidebar (Collapsible) */}
+          <Sidebar
+            folders={folders}
+            selectedFolderId={selectedFolderId}
+            onSelectFolder={(id) => {
+              setSelectedFolderId(id);
+              setSelecteInkBlobId(null);
+            }}
+            onCreateFolder={handleCreateFolder}
+            isOpen={sidebarOpen}
+          />
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col h-full min-w-0 glass m-4 rounded-2xl overflow-hidden shadow-2xl border-web3-border/50">
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col h-full min-w-0 glass m-4 rounded-2xl overflow-hidden shadow-2xl border-web3-border/50">
 
-          {/* Global Toolbar / Drag Region */}
-          <div className="h-14 bg-web3-card/50 backdrop-blur-md border-b border-web3-border flex items-center justify-between px-4 select-none">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={`p-2 rounded-lg hover:bg-web3-cardHover transition-colors ${!sidebarOpen ? 'text-web3-textMuted' : 'text-web3-primary'}`}
-              >
-                <SidebarIcon size={20} />
-              </button>
-              <div className="flex items-center gap-2">
-                <img src="/logo.png" alt="Inkblob Logo" className="w-6 h-6 object-contain" />
-                <span className="text-sm font-semibold text-web3-text">
-                  {folders.find(f => f.id === selectedFolderId)?.name}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleCreateNote}
-              className="p-2 text-web3-textMuted hover:text-web3-accent transition-colors hover:bg-web3-cardHover rounded-lg"
-              title="New Note"
-            >
-              <Edit size={20} />
-            </button>
-          </div>
-
-          {/* Note List & Editor Split */}
-          <div className="flex-1 flex overflow-hidden">
-            <NoteList
-              notes={filtereInkBlobs}
-              selecteInkBlobId={selecteInkBlobId}
-              onSelectNote={setSelecteInkBlobId}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-            />
-            <Editor
-              note={activeNote}
-              onUpdateNote={handleUpdateNote}
-              onDeleteNote={handleDeleteNote}
+            {/* Header with Wallet Connect */}
+            <Header
+              sidebarOpen={sidebarOpen}
+              setSidebarOpen={setSidebarOpen}
+              folderName={folders.find(f => f.id === selectedFolderId)?.name}
               onCreateNote={handleCreateNote}
             />
+
+            {/* Note List & Editor Split */}
+            <div className="flex-1 flex overflow-hidden">
+              <NoteList
+                notes={filtereInkBlobs}
+                selecteInkBlobId={selecteInkBlobId}
+                onSelectNote={setSelecteInkBlobId}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+              <Editor
+                note={activeNote}
+                onUpdateNote={handleUpdateNote}
+                onDeleteNote={handleDeleteNote}
+                onCreateNote={handleCreateNote}
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 }

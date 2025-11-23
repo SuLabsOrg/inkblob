@@ -1,11 +1,13 @@
 import React from 'react';
-import { Folder as FolderIcon, Trash2, Archive, Grid, Plus } from 'lucide-react';
+import { Folder as FolderIcon, Trash2, Archive, Grid, Plus, Sun, Moon } from 'lucide-react';
 import { Folder } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 interface SidebarProps {
   folders: Folder[];
   selectedFolderId: string;
   onSelectFolder: (id: string) => void;
+  onCreateFolder?: () => void;
   isOpen: boolean;
 }
 
@@ -13,8 +15,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   folders,
   selectedFolderId,
   onSelectFolder,
+  onCreateFolder,
   isOpen
 }) => {
+  const { theme, toggleTheme } = useTheme();
+
   if (!isOpen) return null;
 
   const getIcon = (iconName: string) => {
@@ -36,8 +41,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={() => onSelectFolder(folder.id)}
                 className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${selectedFolderId === folder.id
-                    ? 'bg-web3-primary/20 text-web3-primary shadow-[0_0_10px_rgba(139,92,246,0.2)]'
-                    : 'text-web3-textMuted hover:bg-web3-cardHover hover:text-web3-text'
+                  ? 'bg-web3-primary/20 text-web3-primary shadow-[0_0_10px_rgba(139,92,246,0.2)]'
+                  : 'text-web3-textMuted hover:bg-web3-cardHover hover:text-web3-text'
                   }`}
               >
                 <span className={`mr-3 ${selectedFolderId === folder.id ? 'text-web3-primary' : 'text-web3-textMuted'}`}>
@@ -51,13 +56,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom area */}
-      <div className="mt-auto p-4 border-t border-web3-border/30">
-        <div className="flex items-center text-xs text-web3-textMuted justify-between cursor-pointer hover:text-web3-accent transition-colors group">
+      <div className="mt-auto p-4 border-t border-web3-border/30 flex flex-col gap-2">
+        <div
+          onClick={onCreateFolder}
+          className="flex items-center text-xs text-web3-textMuted justify-between cursor-pointer hover:text-web3-accent transition-colors group p-2 rounded hover:bg-web3-cardHover"
+        >
           <span className="flex items-center gap-2">
             <div className="p-1 rounded bg-web3-card border border-web3-border group-hover:border-web3-accent transition-colors">
               <Plus size={12} />
             </div>
             New Folder
+          </span>
+        </div>
+
+        <div
+          onClick={toggleTheme}
+          className="flex items-center text-xs text-web3-textMuted justify-between cursor-pointer hover:text-web3-primary transition-colors group p-2 rounded hover:bg-web3-cardHover"
+        >
+          <span className="flex items-center gap-2">
+            <div className="p-1 rounded bg-web3-card border border-web3-border group-hover:border-web3-primary transition-colors">
+              {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
+            </div>
+            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
           </span>
         </div>
       </div>

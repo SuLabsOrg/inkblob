@@ -1,22 +1,52 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  body {
-    @apply bg-web3-bg text-web3-text antialiased;
-  }
-}
+/* Standard CSS replacement for Tailwind directives since we use CDN */
 
 @layer utilities {
+  :root {
+    /* Light Mode Defaults */
+    --bg-color: #f8f9fa;
+    --card-bg: rgba(255, 255, 255, 0.8);
+    --card-hover: rgba(243, 244, 246, 0.9);
+    --border-color: rgba(229, 231, 235, 0.8);
+    --text-color: #1f2937;
+    --text-muted: #6b7280;
+    --primary: #8b5cf6;
+    --secondary: #ec4899;
+    --accent: #06b6d4;
+  }
+
+  .dark {
+    /* Dark Mode (Global Dark) */
+    --bg-color: #000000;
+    --card-bg: rgba(15, 15, 20, 0.8);
+    --card-hover: rgba(25, 25, 35, 0.9);
+    --border-color: rgba(255, 255, 255, 0.15);
+    --text-color: #f0f0f0;
+    --text-muted: #a0a0a0;
+    --primary: #a78bfa;
+    /* Lighter Violet for better contrast on black */
+    --secondary: #f472b6;
+    /* Lighter Pink */
+    --accent: #22d3ee;
+    /* Lighter Cyan */
+  }
+
   .glass {
-    @apply bg-web3-card backdrop-blur-md border border-web3-border;
+    background-color: var(--card-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
   }
-  
+
   .glass-hover {
-    @apply hover:bg-web3-cardHover transition-colors duration-200;
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 200ms;
   }
-  
+
+  .glass-hover:hover {
+    background-color: var(--card-hover);
+  }
+
   .text-glow {
     text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
   }

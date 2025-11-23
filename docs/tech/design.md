@@ -591,8 +591,11 @@ public entry fun switch_active_notebook(
 
 ```move
 /// Authorize device-specific hot wallet with automatic funding
+/// SECURITY: Properly handles coin objects and validates balances before transfer
 public entry fun authorize_session_and_fund(
     notebook: &Notebook,
+    mut sui_coin: Coin<SUI>,
+    mut wal_coin: Coin<WAL>,
     device_fingerprint: String,
     hot_wallet_address: address,
     expires_at: u64,
@@ -625,6 +628,13 @@ public entry fun authorize_session_and_fund(
         default_wal
     };
 
+    // SECURITY FIX: Verify sufficient balance before proceeding
+    let sui_balance = coin::value(&sui_coin);
+    let wal_balance = coin::value(&wal_coin);
+
+    assert!(sui_balance >= sui_to_transfer, E_INSUFFICIENT_BALANCE);
+    assert!(wal_balance >= wal_to_transfer, E_INSUFFICIENT_BALANCE);
+
     // Create SessionCap with device info
     let session_cap_id = object::new(ctx);
     let session_cap = SessionCap {
@@ -641,11 +651,17 @@ public entry fun authorize_session_and_fund(
     // Transfer SessionCap to hot wallet
     transfer::transfer(session_cap, hot_wallet_address);
 
-    // Note: The actual token transfers need to be handled via coin objects
-    // This is a simplified version - in practice, you'd need to:
-    // 1. Accept Coin<SUI> and Coin<WAL> objects as parameters
-    // 2. Split and transfer portions to hot_wallet_address
-    // 3. Handle the case where sender doesn't have enough balance
+    // SECURITY FIX: Properly handle coin transfers with balance validation
+    // Split coins and transfer to hot wallet
+    let sui_payment = coin::split(&mut sui_coin, sui_to_transfer, ctx);
+    let wal_payment = coin::split(&mut wal_coin, wal_to_transfer, ctx);
+
+    transfer::public_transfer(sui_payment, hot_wallet_address);
+    transfer::public_transfer(wal_payment, hot_wallet_address);
+
+    // Return remainder coins to sender
+    transfer::public_transfer(sui_coin, sender);
+    transfer::public_transfer(wal_coin, sender);
 
     // Emit event
     event::emit(SessionAuthorized {
@@ -730,6 +746,7 @@ public entry fun update_note(
 
 ```move
 /// Create a new folder
+/// SECURITY: Enforces maximum depth (REQ-FOLDER-003) and prevents cycles
 public entry fun create_folder(
     notebook: &mut Notebook,
     session_cap: Option<SessionCap>,
@@ -749,16 +766,25 @@ public entry fun create_folder(
 
     let now = tx_context::epoch_timestamp_ms(ctx);
 
-    // Verify parent exists if specified
+    // SECURITY FIX: Verify parent exists and validate depth if specified
     if (option::is_some(&parent_id)) {
-        let parent = option::borrow(&parent_id);
-        assert!(table::contains(&notebook.folders, *parent), E_PARENT_NOT_FOUND);
+        let parent = *option::borrow(&parent_id);
+        assert!(table::contains(&notebook.folders, parent), E_PARENT_NOT_FOUND);
+
+        // Calculate depth from parent - must be < 5 (REQ-FOLDER-003)
+        let parent_depth = calculate_folder_depth(&notebook.folders, parent);
+        assert!(parent_depth < 5, E_MAX_FOLDER_DEPTH);
+
+        // Verify parent is not deleted
+        let parent_folder = table::borrow(&notebook.folders, parent);
+        assert!(!parent_folder.is_deleted, E_PARENT_DELETED);
     };
 
     let folder = Folder {
         id: folder_id,
         encrypted_name,
         parent_id,
+        sort_order: 0,  // Auto-assigned, can be updated later
         created_at: now,
         updated_at: now,
         is_deleted: false,
@@ -775,6 +801,7 @@ public entry fun create_folder(
 }
 
 /// Update folder (rename or move)
+/// SECURITY: Prevents circular references and validates depth on parent change
 public entry fun update_folder(
     notebook: &mut Notebook,
     session_cap: Option<SessionCap>,
@@ -793,6 +820,25 @@ public entry fun update_folder(
     };
 
     assert!(table::contains(&notebook.folders, folder_id), E_FOLDER_NOT_FOUND);
+
+    // SECURITY FIX: Validate parent_id if being changed
+    if (option::is_some(&parent_id)) {
+        let new_parent = *option::borrow(&parent_id);
+
+        // Verify parent exists
+        assert!(table::contains(&notebook.folders, new_parent), E_PARENT_NOT_FOUND);
+
+        // Check for circular reference
+        assert!(!would_create_cycle(&notebook.folders, folder_id, new_parent), E_CIRCULAR_REFERENCE);
+
+        // Verify depth limit
+        let parent_depth = calculate_folder_depth(&notebook.folders, new_parent);
+        assert!(parent_depth < 5, E_MAX_FOLDER_DEPTH);
+
+        // Verify parent is not deleted
+        let parent_folder = table::borrow(&notebook.folders, new_parent);
+        assert!(!parent_folder.is_deleted, E_PARENT_DELETED);
+    };
 
     let folder = table::borrow_mut(&mut notebook.folders, folder_id);
     folder.encrypted_name = encrypted_name;
@@ -991,7 +1037,8 @@ public entry fun update_note_blob_object(
     });
 }
 
-/// Arweave Backup Metadata Update (Future Feature)
+/// Arweave Backup Metadata Update (MVP Feature)
+/// SECURITY: Validates Arweave transaction ID format before storing
 public entry fun update_note_ar_backup(
     notebook: &mut Notebook,
     session_cap: Option<SessionCap>,
@@ -1011,8 +1058,8 @@ public entry fun update_note_ar_backup(
 
     assert!(table::contains(&notebook.notes, note_id), E_NOTE_NOT_FOUND);
 
-    // Validate Arweave transaction ID format (43 characters, base64url)
-    assert!(string::length(&ar_tx_id) == 43, E_INVALID_AR_TX_ID);
+    // SECURITY FIX: Validate Arweave transaction ID format comprehensively
+    assert!(is_valid_arweave_tx_id(&ar_tx_id), E_INVALID_AR_TX_ID);
 
     let note = table::borrow_mut(&mut notebook.notes, note_id);
     note.ar_backup_id = option::some(ar_tx_id);
@@ -1032,6 +1079,23 @@ public entry fun update_note_ar_backup(
 
 ```move
 /// Revoke a session capability
+///
+/// NOTE ON ACCESS CONTROL:
+/// This function requires the SessionCap to be passed by value, which means:
+/// - Only the hot wallet address (which OWNS the SessionCap) can call this function
+/// - The main wallet CANNOT directly revoke other devices' sessions without first
+///   obtaining the SessionCap object (requires the hot wallet to transfer it)
+///
+/// DESIGN RATIONALE:
+/// - Each device's hot wallet can revoke its own session
+/// - Main wallet verification (notebook.owner check) ensures only authorized revocations
+/// - For emergency "revoke all sessions", see frontend implementation that:
+///   1. Emits AllSessionsRevoked event
+///   2. All devices listen to event and self-revoke their sessions
+///
+/// FUTURE ENHANCEMENT:
+/// Consider adding `revoke_session_by_id()` that allows main wallet to revoke
+/// any session using just the SessionCap ID (requires shared SessionCap or registry)
 public entry fun revoke_session(
     notebook: &Notebook,
     session_cap: SessionCap,
@@ -1055,12 +1119,22 @@ public entry fun revoke_session(
     });
 
     // Delete the SessionCap object
-    let SessionCap { id, notebook_id: _, ephemeral_address: _, expires_at: _, created_at: _ } = session_cap;
+    let SessionCap {
+        id,
+        notebook_id: _,
+        device_fingerprint: _,
+        hot_wallet_address: _,
+        expires_at: _,
+        created_at: _,
+        auto_funded: _,
+    } = session_cap;
     object::delete(id);
 }
 ```
 
-### 3.3 Authorization Helper Function
+### 3.3 Helper Functions
+
+#### 3.3.1 Authorization Helper
 
 ```move
 /// Verify authorization via SessionCap or direct ownership with device support
@@ -1093,6 +1167,127 @@ fun verify_authorization(
 }
 ```
 
+#### 3.3.2 Folder Depth Validation Helper
+
+```move
+/// Calculate folder depth to enforce maximum nesting limit (REQ-FOLDER-003)
+/// SECURITY: Prevents DoS attacks via deeply nested folder structures
+fun calculate_folder_depth(
+    folders: &Table<ID, Folder>,
+    folder_id: ID
+): u64 {
+    let depth = 0u64;
+    let mut current_id = folder_id;
+
+    // Traverse up to parent until root or max depth reached
+    // Safety limit: 10 to prevent infinite loops in case of circular refs
+    while (depth < 10) {
+        if (!table::contains(folders, current_id)) {
+            // Folder not found, return current depth
+            break
+        };
+
+        let folder = table::borrow(folders, current_id);
+
+        if (option::is_none(&folder.parent_id)) {
+            // Reached root level
+            break
+        };
+
+        current_id = *option::borrow(&folder.parent_id);
+        depth = depth + 1;
+    };
+
+    depth
+}
+```
+
+#### 3.3.3 Circular Reference Detection Helper
+
+```move
+/// Check if setting parent_id would create a circular reference
+/// SECURITY: Prevents infinite loops in folder tree traversal
+fun would_create_cycle(
+    folders: &Table<ID, Folder>,
+    folder_id: ID,
+    proposed_parent_id: ID
+): bool {
+    // If proposed parent is the folder itself, that's a direct cycle
+    if (folder_id == proposed_parent_id) {
+        return true
+    };
+
+    // Traverse up from proposed parent to check if we reach folder_id
+    let mut current_id = proposed_parent_id;
+    let mut iterations = 0u64;
+
+    while (iterations < 10) {  // Safety limit
+        if (!table::contains(folders, current_id)) {
+            // Parent doesn't exist, no cycle
+            return false
+        };
+
+        let folder = table::borrow(folders, current_id);
+
+        if (option::is_none(&folder.parent_id)) {
+            // Reached root, no cycle
+            return false
+        };
+
+        let parent = *option::borrow(&folder.parent_id);
+
+        // If we encounter the original folder_id, we have a cycle
+        if (parent == folder_id) {
+            return true
+        };
+
+        current_id = parent;
+        iterations = iterations + 1;
+    };
+
+    // If we hit iteration limit, assume potential cycle (be safe)
+    true
+}
+```
+
+#### 3.3.4 Arweave Transaction ID Validation Helper
+
+```move
+/// Validate Arweave transaction ID format
+/// SECURITY: Prevents storing invalid Arweave IDs that would break restore functionality
+/// Format: 43 characters, base64url alphabet [A-Za-z0-9\-_]
+fun is_valid_arweave_tx_id(tx_id: &String): bool {
+    let bytes = string::bytes(tx_id);
+    let len = vector::length(bytes);
+
+    // Must be exactly 43 characters
+    if (len != 43) {
+        return false
+    };
+
+    // Check each character is in base64url alphabet
+    let i = 0;
+    while (i < len) {
+        let c = *vector::borrow(bytes, i);
+
+        // Valid characters: A-Z (65-90), a-z (97-122), 0-9 (48-57), - (45), _ (95)
+        let is_valid = (c >= 65 && c <= 90) ||   // A-Z
+                       (c >= 97 && c <= 122) ||  // a-z
+                       (c >= 48 && c <= 57) ||   // 0-9
+                       c == 45 ||                // -
+                       c == 95;                  // _
+
+        if (!is_valid) {
+            return false
+        };
+
+        i = i + 1;
+    };
+
+    true
+}
+```
+
 ### 3.4 Error Constants
 
 ```move
@@ -1100,19 +1295,25 @@ fun verify_authorization(
 const E_NOT_OWNER: u64 = 1;
 const E_INVALID_EXPIRATION: u64 = 2;
 const E_SESSION_EXPIRED: u64 = 3;
-const E_WRONG_EPHEMERAL: u64 = 4;
-const E_WRONG_HOT_WALLET: u64 = 5;  // Updated for hot wallet verification
+const E_WRONG_EPHEMERAL: u64 = 4;  // Deprecated, kept for compatibility
+const E_WRONG_HOT_WALLET: u64 = 5;
 const E_WRONG_NOTEBOOK: u64 = 6;
 const E_NOTE_NOT_FOUND: u64 = 7;
 const E_FOLDER_NOT_FOUND: u64 = 8;
 const E_PARENT_NOT_FOUND: u64 = 9;
 const E_INVALID_AR_TX_ID: u64 = 10;
 const E_NOTEBOOK_EXISTS: u64 = 11;
-const E_NOTEBOOK_ALREADY_EXISTS: u64 = 12;
+const E_NOTEBOOK_ALREADY_EXISTS: u64 = 12;  // Duplicate, can be removed
 const E_INSUFFICIENT_BALANCE: u64 = 13;
 const E_DEVICE_CONFLICT: u64 = 14;
 const E_INVALID_BATCH_SIZE: u64 = 15;
 const E_SORT_ORDER_CONFLICT: u64 = 16;
+
+// SECURITY FIX: Added new error codes
+const E_MAX_FOLDER_DEPTH: u64 = 17;      // Folder depth exceeds 5 levels
+const E_CIRCULAR_REFERENCE: u64 = 18;    // Circular folder reference detected
+const E_PARENT_DELETED: u64 = 19;        // Parent folder is deleted
+const E_NOTEBOOK_NOT_FOUND: u64 = 20;    // Notebook does not exist in registry
 ```
 
 ---

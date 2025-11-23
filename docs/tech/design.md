@@ -1,9 +1,9 @@
 # InkBlob - Technical Design Document
 
-**Version:** 1.0
+**Version:** 1.1
 **Date:** 2025-11-23
-**Status:** Draft
-**Based on:** Requirements Specification v1.3
+**Status:** Updated
+**Based on:** Requirements Specification v1.3 + User Feedback Modifications
 
 ---
 
@@ -58,14 +58,28 @@ InkBlob follows a **three-layer decentralized architecture** with clear separati
 - **Format**: `[12-byte IV || Ciphertext || 16-byte Auth Tag]`
 - **Benefit**: Simplifies Walrus storage; reduces on-chain data; ensures IV/ciphertext atomicity
 
-**Decision 3: SessionCap Pattern Instead of Zklogin**
-- **Rationale**: Simpler implementation for MVP; native Sui pattern; good UX (no repeated prompts)
-- **Trade-off**: Requires initial wallet approval vs fully transparent zklogin flow
+**Decision 3: SessionCap Pattern with Persistent Hot Wallet**
+- **Rationale**: Balance user experience (no repeated prompts) with gas efficiency
+- **Implementation**: Generate deterministic Ed25519 hot wallet per main wallet using HKDF derivation
+- **Benefits**:
+  - Persistent address allows balance accumulation
+  - No gas loss from temporary keypair generation
+  - Deterministic recovery across sessions
+  - Clean separation from main wallet security
+- **Trade-off**: One-time wallet approval vs seamless session management
 - **Future**: Can add zklogin as alternative authentication in Phase 2
 
-**Decision 4: Timestamp-Based Ordering (No Order Vectors)**
-- **Rationale**: Avoids on-chain vector maintenance; client-side sorting is fast enough for 10K notes
-- **Trade-off**: No persistent custom ordering vs simpler smart contract and lower gas costs
+**Decision 4: Hybrid Sorting Strategy**
+- **Rationale**: Optimize user experience while maintaining on-chain efficiency
+- **Implementation**:
+  - **Folders**: Support user-defined custom ordering with `sort_order` field
+  - **Notes**: Sort by `updated_at` timestamp within folders
+  - **Root Level**: Custom folder ordering, notes by update time
+- **Benefits**:
+  - Users can organize folders as needed
+  - Notes always show most recent first (intuitive)
+  - Minimal on-chain overhead (single sort_order field)
+- **Trade-off**: Slightly more complex frontend sorting logic vs pure timestamp approach
 
 **Decision 5: Soft Deletion with Flags**
 - **Rationale**: Enables future "trash/recovery" feature; preserves data integrity
@@ -164,24 +178,32 @@ User → Wallet Connection → Key Derivation → Notebook Discovery
      - On create: call create_notebook() entry function
 ```
 
-#### 2.2.2 Session Authorization Flow
+#### 2.2.2 Session Authorization Flow with Persistent Hot Wallet
 
 ```
-First Use → Create SessionCap → Store Ephemeral Key
-  1. Generate Ed25519Keypair in memory
-  2. Request main wallet signature for SessionCap creation
-  3. Call authorize_session(ephemeral_address, expires_at)
-  4. Transfer 0.1 SUI to ephemeral address for gas
-  5. Encrypt ephemeral private key with HKDF(wallet_signature)
-  6. Store encrypted key in localStorage
-  7. All subsequent operations use ephemeral key
+First Use → Derive Hot Wallet → Authorize Session → Store Encrypted Key
+  1. Derive deterministic Ed25519 hot wallet using HKDF(wallet_signature, "hot-wallet-v1")
+  2. Check if hot wallet has SUI balance
+  3. Request main wallet signature for SessionCap creation
+  4. Transfer 0.1 SUI to hot wallet address for gas (if needed)
+  5. Call authorize_session(hot_wallet_address, expires_at)
+  6. Encrypt hot wallet private key with HKDF(wallet_signature, "key-encryption-v1")
+  7. Store encrypted key in localStorage with expiration timestamp
+  8. All subsequent operations use hot wallet key
 
 Subsequent Sessions:
-  1. Retrieve encrypted ephemeral key from localStorage
-  2. Request wallet signature for decryption
-  3. Decrypt and load ephemeral keypair
-  4. Verify SessionCap not expired
-  5. If expired: trigger re-authorization flow
+  1. Retrieve encrypted hot wallet key from localStorage
+  2. Request wallet signature for decryption (same message each time)
+  3. Decrypt and load hot wallet keypair
+  4. Verify SessionCap not expired, check hot wallet balance
+  5. If expired or low balance: trigger re-authorization flow
+  6. Continue using same hot wallet address (persistent across sessions)
+
+Balance Management:
+  - Hot wallet maintains gas balance across sessions
+  - Main wallet can top up hot wallet as needed
+  - No gas loss from generating new temporary addresses
+  - Deterministic derivation ensures same address every time
 ```
 
 #### 2.2.3 Note Creation Flow
@@ -201,11 +223,11 @@ User Input → Encryption → Walrus Upload → Sui Transaction
   7. Upload blob to Walrus
      - Use upload relay
      - Specify epoch duration
-     - Receive blob_id
+     - Receive blob_id and blob_object_id
   8. Encrypt note title separately
   9. Build Sui transaction:
      - Function: update_note
-     - Args: notebook, session_cap, note_id, blob_id, encrypted_title, folder_id
+     - Args: notebook, session_cap, note_id, blob_id, blob_object_id, encrypted_title, folder_id
   10. Sign with ephemeral key
   11. Execute transaction
   12. Emit NoteUpdated event
@@ -311,11 +333,12 @@ module InkBlob::notebook {
         folders: Table<ID, Folder>,
     }
 
-    /// Owned object - registry for cross-device discovery
+    /// Owned object - registry for cross-device discovery with multi-notebook support
     struct NotebookRegistry has key {
         id: UID,
         owner: address,
-        notebook_id: ID,
+        notebooks: Table<String, ID>,  // name -> notebook_id mapping for multi-notebook support
+        active_notebook: String,  // Currently active notebook name
         created_at: u64,
     }
 
@@ -328,10 +351,11 @@ module InkBlob::notebook {
         created_at: u64,
     }
 
-    /// Note metadata stored in Table
+    /// Note metadata stored in Table with Walrus blob object support
     struct Note has store, drop {
         id: ID,
-        blob_id: String,
+        blob_id: String,           // Walrus blob ID for content retrieval
+        blob_object_id: String,    // Sui object ID for blob renewal/management
         encrypted_title: String,
         folder_id: Option<ID>,
         created_at: u64,
@@ -341,11 +365,12 @@ module InkBlob::notebook {
         ar_backup_version: Option<u64>,
     }
 
-    /// Folder metadata stored in Table
+    /// Folder metadata stored in Table with custom ordering support
     struct Folder has store, drop {
         id: ID,
         encrypted_name: String,
         parent_id: Option<ID>,
+        sort_order: u64,  // User-defined custom ordering (0 for auto-assigned)
         created_at: u64,
         updated_at: u64,
         is_deleted: bool,
@@ -428,8 +453,14 @@ module InkBlob::notebook {
 
 ```move
 /// Create a new notebook with registry for cross-device discovery
-public entry fun create_notebook(ctx: &mut TxContext) {
+public entry fun create_notebook(
+    notebook_name: String,
+    ctx: &mut TxContext
+) {
     let sender = tx_context::sender(ctx);
+
+    // Check if registry exists
+    // If no registry, create one; if exists, add to existing
 
     // Create shared Notebook object
     let notebook_id = object::new(ctx);
@@ -444,14 +475,19 @@ public entry fun create_notebook(ctx: &mut TxContext) {
     // Share the notebook for multi-device access
     transfer::share_object(notebook);
 
-    // Create owned registry for discovery
+    // Create or update registry
     let registry_id = object::new(ctx);
     let registry = NotebookRegistry {
         id: registry_id,
         owner: sender,
-        notebook_id: notebook_id_value,
+        notebooks: table::new<String, ID>(ctx),
+        active_notebook: notebook_name,
         created_at: tx_context::epoch_timestamp_ms(ctx),
     };
+
+    // Add notebook to registry
+    table::add(&mut registry.notebooks, notebook_name, notebook_id_value);
+
     let registry_id_value = object::uid_to_inner(&registry.id);
 
     // Transfer registry to owner
@@ -463,6 +499,62 @@ public entry fun create_notebook(ctx: &mut TxContext) {
         owner: sender,
         registry_id: registry_id_value,
     });
+}
+
+/// Create additional notebook in existing registry
+public entry fun create_additional_notebook(
+    registry: &mut NotebookRegistry,
+    notebook_name: String,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+
+    // Verify ownership
+    assert!(registry.owner == sender, E_NOT_OWNER);
+
+    // Check if notebook name already exists
+    assert!(!table::contains(&registry.notebooks, notebook_name), E_NOTEBOOK_EXISTS);
+
+    // Create shared Notebook object
+    let notebook_id = object::new(ctx);
+    let notebook = Notebook {
+        id: notebook_id,
+        owner: sender,
+        notes: table::new<ID, Note>(ctx),
+        folders: table::new<ID, Folder>(ctx),
+    };
+    let notebook_id_value = object::uid_to_inner(&notebook.id);
+
+    // Share the notebook
+    transfer::share_object(notebook);
+
+    // Add to registry
+    table::add(&mut registry.notebooks, notebook_name, notebook_id_value);
+
+    // Emit event
+    event::emit(NotebookCreated {
+        notebook_id: notebook_id_value,
+        owner: sender,
+        registry_id: object::uid_to_inner(&registry.id),
+    });
+}
+
+/// Switch active notebook
+public entry fun switch_active_notebook(
+    registry: &mut NotebookRegistry,
+    notebook_name: String,
+    ctx: &TxContext
+) {
+    let sender = tx_context::sender(ctx);
+
+    // Verify ownership
+    assert!(registry.owner == sender, E_NOT_OWNER);
+
+    // Check if notebook exists
+    assert!(table::contains(&registry.notebooks, notebook_name), E_NOTEBOOK_NOT_FOUND);
+
+    // Update active notebook
+    registry.active_notebook = notebook_name;
 }
 ```
 
@@ -519,6 +611,7 @@ public entry fun update_note(
     session_cap: Option<SessionCap>,
     note_id: ID,
     blob_id: String,
+    blob_object_id: String,
     encrypted_title: String,
     folder_id: Option<ID>,
     ctx: &mut TxContext
@@ -541,6 +634,7 @@ public entry fun update_note(
         // Update existing note
         let note = table::borrow_mut(&mut notebook.notes, note_id);
         note.blob_id = blob_id;
+        note.blob_object_id = blob_object_id;
         note.encrypted_title = encrypted_title;
         note.folder_id = folder_id;
         note.updated_at = now;
@@ -550,6 +644,7 @@ public entry fun update_note(
         let note = Note {
             id: note_id,
             blob_id,
+            blob_object_id,
             encrypted_title,
             folder_id,
             created_at: now,
@@ -727,10 +822,43 @@ public entry fun move_note(
 }
 ```
 
-#### 3.2.6 Arweave Backup Metadata Update
+#### 3.2.6 Walrus Blob Renewal Support
 
 ```move
-/// Update Arweave backup metadata for a note
+/// Update Walrus blob object ID after renewal
+public entry fun update_note_blob_object(
+    notebook: &mut Notebook,
+    session_cap: Option<SessionCap>,
+    note_id: ID,
+    new_blob_object_id: String,
+    ctx: &mut TxContext
+) {
+    let sender = verify_authorization(notebook, &session_cap, ctx);
+
+    if (option::is_some(&session_cap)) {
+        let cap = option::destroy_some(session_cap);
+        transfer::transfer(cap, sender);
+    } else {
+        option::destroy_none(session_cap);
+    };
+
+    assert!(table::contains(&notebook.notes, note_id), E_NOTE_NOT_FOUND);
+
+    let note = table::borrow_mut(&mut notebook.notes, note_id);
+    note.blob_object_id = new_blob_object_id;
+    note.updated_at = tx_context::epoch_timestamp_ms(ctx);
+
+    // Emit event for client sync
+    event::emit(NoteUpdated {
+        notebook_id: object::uid_to_inner(&notebook.id),
+        note_id,
+        blob_id: note.blob_id,
+        folder_id: note.folder_id,
+        operator: sender,
+    });
+}
+
+/// Arweave Backup Metadata Update (Future Feature)
 public entry fun update_note_ar_backup(
     notebook: &mut Notebook,
     session_cap: Option<SessionCap>,
@@ -845,6 +973,8 @@ const E_NOTE_NOT_FOUND: u64 = 6;
 const E_FOLDER_NOT_FOUND: u64 = 7;
 const E_PARENT_NOT_FOUND: u64 = 8;
 const E_INVALID_AR_TX_ID: u64 = 9;
+const E_NOTEBOOK_EXISTS: u64 = 10;
+const E_NOTEBOOK_ALREADY_EXISTS: u64 = 11;
 ```
 
 ---
@@ -1044,21 +1174,70 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromB64, toB64 } from '@mysten/sui/utils';
 
 /**
- * Generate ephemeral Ed25519 keypair for session
+ * Derive deterministic Ed25519 hot wallet from main wallet signature
+ * Ensures same hot wallet address across sessions for balance persistence
  */
-export function generateEphemeralKeypair(): Ed25519Keypair {
-  return new Ed25519Keypair();
+export async function deriveHotWallet(
+  walletSignature: string
+): Promise<Ed25519Keypair> {
+  // Use separate HKDF context for hot wallet derivation
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    fromB64(walletSignature),
+    { name: 'HKDF' },
+    false,
+    ['deriveKey']
+  );
+
+  // Derive hot wallet seed
+  const hotWalletSeed = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new TextEncoder().encode('InkBlob-hot-wallet-v1'), // Fixed salt for determinism
+      info: new TextEncoder().encode('ed25519-seed'),           // Context info
+    },
+    keyMaterial,
+    { name: 'HKDF' }, // Intermediate format
+    false,
+    ['deriveKey']
+  );
+
+  // Extract 32 bytes for Ed25519 seed
+  const seedBytes = await crypto.subtle.exportKey('raw', hotWalletSeed);
+  const seed = new Uint8Array(seedBytes).slice(0, 32);
+
+  return Ed25519Keypair.fromSecretKey(seed);
 }
 
 /**
- * Encrypt ephemeral private key for storage
+ * Encrypt hot wallet private key for storage with separate derivation context
  */
-export async function encryptPrivateKey(
+export async function encryptHotWalletKey(
   privateKey: Uint8Array,
   walletSignature: string
 ): Promise<string> {
-  // Derive encryption key from wallet signature
-  const encKey = await deriveEncryptionKey(walletSignature);
+  // Derive encryption key from wallet signature with key-specific context
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    fromB64(walletSignature),
+    { name: 'HKDF' },
+    false,
+    ['deriveKey']
+  );
+
+  const encKey = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new TextEncoder().encode('InkBlob-key-encryption-v1'), // Different salt from content encryption
+      info: new TextEncoder().encode('hot-wallet-key'),
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
 
   // Encrypt private key bytes
   const encrypted = await encryptContent(
@@ -1070,14 +1249,33 @@ export async function encryptPrivateKey(
 }
 
 /**
- * Decrypt ephemeral private key from storage
+ * Decrypt hot wallet private key from storage with separate derivation context
  */
-export async function decryptPrivateKey(
+export async function decryptHotWalletKey(
   encryptedKey: string,
   walletSignature: string
 ): Promise<Ed25519Keypair> {
-  // Derive decryption key from wallet signature
-  const decKey = await deriveEncryptionKey(walletSignature);
+  // Derive decryption key from wallet signature with key-specific context
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    fromB64(walletSignature),
+    { name: 'HKDF' },
+    false,
+    ['deriveKey']
+  );
+
+  const decKey = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new TextEncoder().encode('InkBlob-key-encryption-v1'),
+      info: new TextEncoder().encode('hot-wallet-key'),
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
 
   // Decrypt private key bytes
   const decrypted = await decryptContent(
@@ -1091,18 +1289,18 @@ export async function decryptPrivateKey(
 }
 
 /**
- * Store encrypted ephemeral key in localStorage
+ * Store encrypted hot wallet key in localStorage
  */
-export function storeEphemeralKey(encryptedKey: string, expiresAt: number): void {
-  localStorage.setItem('InkBlob_ephemeral_key', encryptedKey);
+export function storeHotWalletKey(encryptedKey: string, expiresAt: number): void {
+  localStorage.setItem('InkBlob_hot_wallet_key', encryptedKey);
   localStorage.setItem('InkBlob_session_expires', expiresAt.toString());
 }
 
 /**
- * Retrieve encrypted ephemeral key from localStorage
+ * Retrieve encrypted hot wallet key from localStorage
  */
-export function retrieveEphemeralKey(): { encryptedKey: string; expiresAt: number } | null {
-  const encryptedKey = localStorage.getItem('InkBlob_ephemeral_key');
+export function retrieveHotWalletKey(): { encryptedKey: string; expiresAt: number } | null {
+  const encryptedKey = localStorage.getItem('InkBlob_hot_wallet_key');
   const expiresAt = localStorage.getItem('InkBlob_session_expires');
 
   if (!encryptedKey || !expiresAt) {
@@ -1111,7 +1309,7 @@ export function retrieveEphemeralKey(): { encryptedKey: string; expiresAt: numbe
 
   // Check if expired
   if (Date.now() > parseInt(expiresAt)) {
-    clearEphemeralKey();
+    clearHotWalletKey();
     return null;
   }
 
@@ -1122,11 +1320,25 @@ export function retrieveEphemeralKey(): { encryptedKey: string; expiresAt: numbe
 }
 
 /**
- * Clear ephemeral key from storage
+ * Clear hot wallet key from storage
  */
-export function clearEphemeralKey(): void {
-  localStorage.removeItem('InkBlob_ephemeral_key');
+export function clearHotWalletKey(): void {
+  localStorage.removeItem('InkBlob_hot_wallet_key');
   localStorage.removeItem('InkBlob_session_expires');
+}
+
+/**
+ * Get hot wallet address from localStorage (for balance checking)
+ */
+export function getStoredHotWalletAddress(): string | null {
+  return localStorage.getItem('InkBlob_hot_wallet_address');
+}
+
+/**
+ * Store hot wallet address in localStorage
+ */
+export function storeHotWalletAddress(address: string): void {
+  localStorage.setItem('InkBlob_hot_wallet_address', address);
 }
 ```
 
@@ -2825,7 +3037,39 @@ Note: Actual costs vary based on network load and object sizes.
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2025-11-23 | Claude Code | Updated design with user feedback modifications |
 | 1.0 | 2025-11-23 | Claude Code | Initial technical design based on requirements v1.3 |
+
+### Version 1.1 Changes
+
+**Session Authorization Flow:**
+- Changed from temporary Ed25519 keypairs to deterministic hot wallet derivation
+- Implemented HKDF-based deterministic hot wallet generation using wallet signature
+- Added balance persistence across sessions to prevent gas loss
+- Updated key encryption with separate derivation contexts
+
+**Multi-Notebook Support:**
+- Enhanced NotebookRegistry to support multiple notebooks with Table<String, ID>
+- Added active_notebook field for current notebook tracking
+- Implemented create_additional_notebook() and switch_active_notebook() functions
+- Added notebook name conflict prevention
+
+**Hybrid Sorting Strategy:**
+- Added sort_order field to Folder struct for user-defined custom ordering
+- Maintained timestamp-based sorting for Notes within folders
+- Clear separation between folder organization and note chronology
+
+**Walrus Blob Object Support:**
+- Added blob_object_id field to Note struct for Sui object reference
+- Updated update_note() function to handle both blob_id and blob_object_id
+- Implemented update_note_blob_object() for blob renewal support
+- Enhanced Walrus upload service documentation
+
+**Security & UX Improvements:**
+- Separated encryption contexts for content vs hot wallet keys
+- Added hot wallet address storage for balance checking
+- Enhanced error handling with new error codes for multi-notebook scenarios
+- Improved session flow with balance management
 
 ---
 

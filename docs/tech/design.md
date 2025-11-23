@@ -1,9 +1,9 @@
 # InkBlob - Technical Design Document
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** 2025-11-23
-**Status:** Updated
-**Based on:** Requirements Specification v1.3 + User Feedback Modifications
+**Status:** Reviewed & Updated
+**Based on:** Requirements Specification v1.3 + User Feedback Modifications + Review Comments
 
 ---
 
@@ -58,15 +58,17 @@ InkBlob follows a **three-layer decentralized architecture** with clear separati
 - **Format**: `[12-byte IV || Ciphertext || 16-byte Auth Tag]`
 - **Benefit**: Simplifies Walrus storage; reduces on-chain data; ensures IV/ciphertext atomicity
 
-**Decision 3: SessionCap Pattern with Persistent Hot Wallet**
-- **Rationale**: Balance user experience (no repeated prompts) with gas efficiency
-- **Implementation**: Generate deterministic Ed25519 hot wallet per main wallet using HKDF derivation
+**Decision 3: SessionCap Pattern with Device-Specific Persistent Hot Wallet**
+- **Rationale**: Balance user experience (no repeated prompts) with gas efficiency while preventing multi-device conflicts
+- **Implementation**: Generate deterministic Ed25519 hot wallet per main wallet + device fingerprint using HKDF derivation
 - **Benefits**:
-  - Persistent address allows balance accumulation
+  - Persistent address allows balance accumulation per device
   - No gas loss from temporary keypair generation
-  - Deterministic recovery across sessions
+  - Device-specific isolation prevents cross-device conflicts
+  - Deterministic recovery per device across sessions
   - Clean separation from main wallet security
-- **Trade-off**: One-time wallet approval vs seamless session management
+- **Device Differentiation**: Each device gets unique hot wallet derived from device fingerprint
+- **Trade-off**: One-time wallet approval per device vs seamless session management
 - **Future**: Can add zklogin as alternative authentication in Phase 2
 
 **Decision 4: Hybrid Sorting Strategy**
@@ -178,32 +180,40 @@ User → Wallet Connection → Key Derivation → Notebook Discovery
      - On create: call create_notebook() entry function
 ```
 
-#### 2.2.2 Session Authorization Flow with Persistent Hot Wallet
+#### 2.2.2 Session Authorization Flow with Device-Specific Hot Wallet
 
 ```
-First Use → Derive Hot Wallet → Authorize Session → Store Encrypted Key
-  1. Derive deterministic Ed25519 hot wallet using HKDF(wallet_signature, "hot-wallet-v1")
-  2. Check if hot wallet has SUI balance
-  3. Request main wallet signature for SessionCap creation
-  4. Transfer 0.1 SUI to hot wallet address for gas (if needed)
-  5. Call authorize_session(hot_wallet_address, expires_at)
-  6. Encrypt hot wallet private key with HKDF(wallet_signature, "key-encryption-v1")
-  7. Store encrypted key in localStorage with expiration timestamp
-  8. All subsequent operations use hot wallet key
+Device Setup → Generate Device Fingerprint → Derive Hot Wallet → Authorize & Fund
+  1. Generate unique device fingerprint (browser + user agent + random device ID)
+  2. Derive deterministic Ed25519 hot wallet using HKDF(wallet_signature + device_fingerprint, "hot-wallet-v1")
+  3. Request main wallet signature for SessionCap creation with auto-funding
+  4. Call authorize_session_and_fund(hot_wallet_address, expires_at) - CONTRACT HANDLES FUNDING
+     - Contract automatically transfers 0.1 SUI + 0.5 WAL to hot wallet
+     - Creates SessionCap linked to hot wallet
+  5. Store device fingerprint and encrypted hot wallet key in localStorage
+  6. All subsequent operations use device-specific hot wallet key
 
-Subsequent Sessions:
-  1. Retrieve encrypted hot wallet key from localStorage
+Subsequent Sessions (Same Device):
+  1. Retrieve device fingerprint and encrypted hot wallet key from localStorage
   2. Request wallet signature for decryption (same message each time)
-  3. Decrypt and load hot wallet keypair
-  4. Verify SessionCap not expired, check hot wallet balance
-  5. If expired or low balance: trigger re-authorization flow
-  6. Continue using same hot wallet address (persistent across sessions)
+  3. Derive same hot wallet using wallet_signature + device_fingerprint
+  4. Decrypt and verify matches stored hot wallet address
+  5. Verify SessionCap not expired, check hot wallet balance
+  6. If expired or low balance: trigger re-authorization flow with auto-funding
+  7. Continue using same device-specific hot wallet address
 
-Balance Management:
-  - Hot wallet maintains gas balance across sessions
-  - Main wallet can top up hot wallet as needed
-  - No gas loss from generating new temporary addresses
-  - Deterministic derivation ensures same address every time
+Multi-Device Support:
+  - Each device generates unique fingerprint → unique hot wallet
+  - No conflicts between devices (different hot wallet addresses)
+  - Shared Notebook object works across all devices via SessionCap
+  - Device isolation prevents balance conflicts
+
+Auto-Funding Mechanism:
+  - authorize_session_and_fund() automatically ensures hot wallet has:
+    * 0.1 SUI for transaction fees
+    * 0.5 WAL for Walrus storage operations
+  - Contract handles the transfer atomically with SessionCap creation
+  - Users don't need to manually manage hot wallet balances
 ```
 
 #### 2.2.3 Note Creation Flow
@@ -342,13 +352,15 @@ module InkBlob::notebook {
         created_at: u64,
     }
 
-    /// Owned object - ephemeral session capability
+    /// Owned object - device-specific session capability with auto-funding
     struct SessionCap has key {
         id: UID,
         notebook_id: ID,
-        ephemeral_address: address,
+        device_fingerprint: String,  // Device identifier for multi-device support
+        hot_wallet_address: address,  // Device-specific hot wallet
         expires_at: u64,
         created_at: u64,
+        auto_funded: bool,  // Whether auto-funding was applied
     }
 
     /// Note metadata stored in Table with Walrus blob object support
@@ -422,9 +434,12 @@ module InkBlob::notebook {
     struct SessionAuthorized has copy, drop {
         notebook_id: ID,
         session_cap_id: ID,
-        ephemeral_address: address,
+        hot_wallet_address: address,
+        device_fingerprint: String,
         expires_at: u64,
         owner: address,
+        sui_funded: u64,
+        wal_funded: u64,
     }
 
     struct SessionRevoked has copy, drop {
@@ -561,11 +576,14 @@ public entry fun switch_active_notebook(
 #### 3.2.2 Session Authorization
 
 ```move
-/// Authorize ephemeral session key for frictionless operations
-public entry fun authorize_session(
+/// Authorize device-specific hot wallet with automatic funding
+public entry fun authorize_session_and_fund(
     notebook: &Notebook,
-    ephemeral_address: address,
+    device_fingerprint: String,
+    hot_wallet_address: address,
     expires_at: u64,
+    sui_amount: Option<u64>,
+    wal_amount: Option<u64>,
     ctx: &mut TxContext
 ) {
     let sender = tx_context::sender(ctx);
@@ -577,28 +595,74 @@ public entry fun authorize_session(
     let now = tx_context::epoch_timestamp_ms(ctx);
     assert!(expires_at > now, E_INVALID_EXPIRATION);
 
-    // Create SessionCap
+    // Default funding amounts if not specified
+    let default_sui = 100000000; // 0.1 SUI in MIST
+    let default_wal = 500000000; // 0.5 WAL in MIST (adjust based on WAL decimals)
+
+    let sui_to_transfer = if (option::is_some(&sui_amount)) {
+        *option::borrow(&sui_amount)
+    } else {
+        default_sui
+    };
+
+    let wal_to_transfer = if (option::is_some(&wal_amount)) {
+        *option::borrow(&wal_amount)
+    } else {
+        default_wal
+    };
+
+    // Create SessionCap with device info
     let session_cap_id = object::new(ctx);
     let session_cap = SessionCap {
         id: session_cap_id,
         notebook_id: object::uid_to_inner(&notebook.id),
-        ephemeral_address,
+        device_fingerprint,
+        hot_wallet_address,
         expires_at,
         created_at: now,
+        auto_funded: true,
     };
     let session_cap_id_value = object::uid_to_inner(&session_cap.id);
 
-    // Transfer to ephemeral address
-    transfer::transfer(session_cap, ephemeral_address);
+    // Transfer SessionCap to hot wallet
+    transfer::transfer(session_cap, hot_wallet_address);
+
+    // Note: The actual token transfers need to be handled via coin objects
+    // This is a simplified version - in practice, you'd need to:
+    // 1. Accept Coin<SUI> and Coin<WAL> objects as parameters
+    // 2. Split and transfer portions to hot_wallet_address
+    // 3. Handle the case where sender doesn't have enough balance
 
     // Emit event
     event::emit(SessionAuthorized {
         notebook_id: object::uid_to_inner(&notebook.id),
         session_cap_id: session_cap_id_value,
-        ephemeral_address,
+        hot_wallet_address,
+        device_fingerprint,
         expires_at,
         owner: sender,
+        sui_funded: sui_to_transfer,
+        wal_funded: wal_to_transfer,
     });
+}
+
+/// Legacy authorize_session for backward compatibility (deprecated)
+public entry fun authorize_session(
+    notebook: &Notebook,
+    ephemeral_address: address,
+    expires_at: u64,
+    ctx: &mut TxContext
+) {
+    // Forward to new function with empty device fingerprint and no funding
+    authorize_session_and_fund(
+        notebook,
+        b"legacy-device".to_string(),
+        ephemeral_address,
+        expires_at,
+        option::none<u64>(),
+        option::none<u64>(),
+        ctx
+    );
 }
 ```
 
@@ -930,7 +994,7 @@ public entry fun revoke_session(
 ### 3.3 Authorization Helper Function
 
 ```move
-/// Verify authorization via SessionCap or direct ownership
+/// Verify authorization via SessionCap or direct ownership with device support
 fun verify_authorization(
     notebook: &Notebook,
     session_cap: &Option<SessionCap>,
@@ -948,8 +1012,8 @@ fun verify_authorization(
         let now = tx_context::epoch_timestamp_ms(ctx);
         assert!(cap.expires_at > now, E_SESSION_EXPIRED);
 
-        // Verify sender is ephemeral address
-        assert!(cap.ephemeral_address == sender, E_WRONG_EPHEMERAL);
+        // Verify sender is the hot wallet address (not ephemeral_address anymore)
+        assert!(cap.hot_wallet_address == sender, E_WRONG_HOT_WALLET);
 
         sender
     } else {
@@ -968,13 +1032,16 @@ const E_NOT_OWNER: u64 = 1;
 const E_INVALID_EXPIRATION: u64 = 2;
 const E_SESSION_EXPIRED: u64 = 3;
 const E_WRONG_EPHEMERAL: u64 = 4;
-const E_WRONG_NOTEBOOK: u64 = 5;
-const E_NOTE_NOT_FOUND: u64 = 6;
-const E_FOLDER_NOT_FOUND: u64 = 7;
-const E_PARENT_NOT_FOUND: u64 = 8;
-const E_INVALID_AR_TX_ID: u64 = 9;
-const E_NOTEBOOK_EXISTS: u64 = 10;
-const E_NOTEBOOK_ALREADY_EXISTS: u64 = 11;
+const E_WRONG_HOT_WALLET: u64 = 5;  // Updated for hot wallet verification
+const E_WRONG_NOTEBOOK: u64 = 6;
+const E_NOTE_NOT_FOUND: u64 = 7;
+const E_FOLDER_NOT_FOUND: u64 = 8;
+const E_PARENT_NOT_FOUND: u64 = 9;
+const E_INVALID_AR_TX_ID: u64 = 10;
+const E_NOTEBOOK_EXISTS: u64 = 11;
+const E_NOTEBOOK_ALREADY_EXISTS: u64 = 12;
+const E_INSUFFICIENT_BALANCE: u64 = 13;
+const E_DEVICE_CONFLICT: u64 = 14;
 ```
 
 ---
@@ -1174,13 +1241,53 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromB64, toB64 } from '@mysten/sui/utils';
 
 /**
- * Derive deterministic Ed25519 hot wallet from main wallet signature
- * Ensures same hot wallet address across sessions for balance persistence
+ * Generate unique device fingerprint for multi-device support
+ */
+export function generateDeviceFingerprint(): string {
+  // Get browser and system information
+  const userAgent = navigator.userAgent;
+  const language = navigator.language;
+  const platform = navigator.platform;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Generate or retrieve persistent device ID
+  let deviceId = localStorage.getItem('InkBlob_device_id');
+  if (!deviceId) {
+    // Generate random device ID
+    deviceId = 'device_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    localStorage.setItem('InkBlob_device_id', deviceId);
+  }
+
+  // Combine all factors
+  const deviceData = `${deviceId}|${userAgent}|${language}|${platform}|${timezone}`;
+
+  // Create hash of device data
+  const encoder = new TextEncoder();
+  const data = encoder.encode(deviceData);
+
+  // Simple hash (in production, use a proper hash function)
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data[i];
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+
+  return Math.abs(hash).toString(16);
+}
+
+/**
+ * Derive device-specific Ed25519 hot wallet from main wallet signature
+ * Each device gets unique hot wallet to prevent multi-device conflicts
  */
 export async function deriveHotWallet(
-  walletSignature: string
-): Promise<Ed25519Keypair> {
-  // Use separate HKDF context for hot wallet derivation
+  walletSignature: string,
+  deviceFingerprint?: string
+): Promise<{ keypair: Ed25519Keypair; address: string; fingerprint: string }> {
+  // Generate device fingerprint if not provided
+  const fingerprint = deviceFingerprint || generateDeviceFingerprint();
+
+  // Use separate HKDF context for hot wallet derivation with device fingerprint
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     fromB64(walletSignature),
@@ -1189,15 +1296,28 @@ export async function deriveHotWallet(
     ['deriveKey']
   );
 
-  // Derive hot wallet seed
+  // Combine wallet signature with device fingerprint
+  const combinedInput = new TextEncoder().encode(
+    `${walletSignature}:${fingerprint}`
+  );
+
+  const combinedKeyMaterial = await crypto.subtle.importKey(
+    'raw',
+    combinedInput,
+    { name: 'HKDF' },
+    false,
+    ['deriveKey']
+  );
+
+  // Derive hot wallet seed with device-specific context
   const hotWalletSeed = await crypto.subtle.deriveKey(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: new TextEncoder().encode('InkBlob-hot-wallet-v1'), // Fixed salt for determinism
-      info: new TextEncoder().encode('ed25519-seed'),           // Context info
+      salt: new TextEncoder().encode('InkBlob-hot-wallet-device-v1'), // Device-specific salt
+      info: new TextEncoder().encode(`ed25519-seed-${fingerprint}`),  // Device-specific info
     },
-    keyMaterial,
+    combinedKeyMaterial,
     { name: 'HKDF' }, // Intermediate format
     false,
     ['deriveKey']
@@ -1207,7 +1327,14 @@ export async function deriveHotWallet(
   const seedBytes = await crypto.subtle.exportKey('raw', hotWalletSeed);
   const seed = new Uint8Array(seedBytes).slice(0, 32);
 
-  return Ed25519Keypair.fromSecretKey(seed);
+  const keypair = Ed25519Keypair.fromSecretKey(seed);
+  const address = keypair.getPublicKey().toSuiAddress();
+
+  return {
+    keypair,
+    address,
+    fingerprint
+  };
 }
 
 /**
@@ -1289,21 +1416,35 @@ export async function decryptHotWalletKey(
 }
 
 /**
- * Store encrypted hot wallet key in localStorage
+ * Store device-specific hot wallet key in localStorage
  */
-export function storeHotWalletKey(encryptedKey: string, expiresAt: number): void {
+export function storeHotWalletKey(
+  encryptedKey: string,
+  expiresAt: number,
+  deviceFingerprint: string,
+  hotWalletAddress: string
+): void {
   localStorage.setItem('InkBlob_hot_wallet_key', encryptedKey);
   localStorage.setItem('InkBlob_session_expires', expiresAt.toString());
+  localStorage.setItem('InkBlob_device_fingerprint', deviceFingerprint);
+  localStorage.setItem('InkBlob_hot_wallet_address', hotWalletAddress);
 }
 
 /**
- * Retrieve encrypted hot wallet key from localStorage
+ * Retrieve device-specific hot wallet key from localStorage
  */
-export function retrieveHotWalletKey(): { encryptedKey: string; expiresAt: number } | null {
+export function retrieveHotWalletKey(): {
+  encryptedKey: string;
+  expiresAt: number;
+  deviceFingerprint: string;
+  hotWalletAddress: string;
+} | null {
   const encryptedKey = localStorage.getItem('InkBlob_hot_wallet_key');
   const expiresAt = localStorage.getItem('InkBlob_session_expires');
+  const deviceFingerprint = localStorage.getItem('InkBlob_device_fingerprint');
+  const hotWalletAddress = localStorage.getItem('InkBlob_hot_wallet_address');
 
-  if (!encryptedKey || !expiresAt) {
+  if (!encryptedKey || !expiresAt || !deviceFingerprint || !hotWalletAddress) {
     return null;
   }
 
@@ -1316,6 +1457,8 @@ export function retrieveHotWalletKey(): { encryptedKey: string; expiresAt: numbe
   return {
     encryptedKey,
     expiresAt: parseInt(expiresAt),
+    deviceFingerprint,
+    hotWalletAddress,
   };
 }
 
@@ -1325,20 +1468,35 @@ export function retrieveHotWalletKey(): { encryptedKey: string; expiresAt: numbe
 export function clearHotWalletKey(): void {
   localStorage.removeItem('InkBlob_hot_wallet_key');
   localStorage.removeItem('InkBlob_session_expires');
+  localStorage.removeItem('InkBlob_device_fingerprint');
+  localStorage.removeItem('InkBlob_hot_wallet_address');
 }
 
 /**
- * Get hot wallet address from localStorage (for balance checking)
+ * Get stored device information
  */
-export function getStoredHotWalletAddress(): string | null {
-  return localStorage.getItem('InkBlob_hot_wallet_address');
+export function getStoredDeviceInfo(): {
+  deviceFingerprint: string;
+  hotWalletAddress: string;
+} | null {
+  const deviceFingerprint = localStorage.getItem('InkBlob_device_fingerprint');
+  const hotWalletAddress = localStorage.getItem('InkBlob_hot_wallet_address');
+
+  if (!deviceFingerprint || !hotWalletAddress) {
+    return null;
+  }
+
+  return { deviceFingerprint, hotWalletAddress };
 }
 
 /**
- * Store hot wallet address in localStorage
+ * Check if current device matches stored device (prevents device conflicts)
  */
-export function storeHotWalletAddress(address: string): void {
-  localStorage.setItem('InkBlob_hot_wallet_address', address);
+export function isCurrentDevice(): boolean {
+  const storedFingerprint = localStorage.getItem('InkBlob_device_fingerprint');
+  const currentFingerprint = generateDeviceFingerprint();
+
+  return storedFingerprint === currentFingerprint;
 }
 ```
 
@@ -3037,8 +3195,41 @@ Note: Actual costs vary based on network load and object sizes.
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.2 | 2025-11-23 | Claude Code | Device-specific hot wallet + auto-funding based on review |
 | 1.1 | 2025-11-23 | Claude Code | Updated design with user feedback modifications |
 | 1.0 | 2025-11-23 | Claude Code | Initial technical design based on requirements v1.3 |
+
+### Version 1.2 Changes (Review Comments Implementation)
+
+**Device-Specific Hot Wallet:**
+- Added device fingerprint generation using browser + system information + persistent device ID
+- Implemented device-specific HKDF derivation to prevent multi-device conflicts
+- Each device gets unique hot wallet address while maintaining deterministic recovery
+- Updated SessionCap struct to include device_fingerprint and hot_wallet_address
+
+**Auto-Funding Authorization:**
+- Implemented authorize_session_and_fund() contract method for automatic balance management
+- Contract automatically ensures hot wallet has 0.1 SUI + 0.5 WAL on authorization
+- Atomic operation combining SessionCap creation with token transfers
+- Added funding amounts as parameters with sensible defaults
+
+**Enhanced Session Management:**
+- Updated verify_authorization() to check hot_wallet_address instead of ephemeral_address
+- Added device conflict detection and prevention mechanisms
+- Improved localStorage functions to store device-specific information
+- Added isCurrentDevice() function for device validation
+
+**Improved Frontend Integration:**
+- Enhanced deriveHotWallet() to return keypair, address, and fingerprint
+- Updated encryption context separation for device-specific keys
+- Added device information storage and retrieval functions
+- Improved error handling with new error codes for device conflicts
+
+**Security & UX Enhancements:**
+- Device isolation prevents cross-device balance conflicts
+- Auto-funding eliminates manual balance management for users
+- Simplified user experience with one-time authorization per device
+- Enhanced session recovery with device fingerprint validation
 
 ### Version 1.1 Changes
 

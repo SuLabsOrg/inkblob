@@ -350,6 +350,9 @@ function AppContent() {
 
     try {
       // Check session status and prompt for authorization if needed
+      // Track fresh session auth result (if we just authorized)
+      let sessionAuthResult = null;
+
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
 
@@ -362,8 +365,8 @@ function AppContent() {
         if (userConfirmed) {
           try {
             console.log('[App] User confirmed, authorizing session...');
-            await authorizeSession(notebook.data.objectId);
-            console.log('[App] Session authorized successfully, continuing with save...');
+            sessionAuthResult = await authorizeSession(notebook.data.objectId);
+            console.log('[App] Session authorized successfully:', sessionAuthResult);
           } catch (authError: any) {
             console.error('[App] Session authorization failed:', authError);
 
@@ -388,13 +391,30 @@ function AppContent() {
             // Continue with main wallet mode (fallback)
             console.log('[App] Falling back to main wallet signing mode');
           }
+
+          // Store the session auth result for use below
+          // This ensures we use the fresh session info even if context state hasn't updated yet
+          if (sessionAuthResult) {
+            console.log('[App] Using fresh session auth result for upload');
+          }
         } else {
           console.log('[App] User declined session authorization, using main wallet');
         }
       }
 
       // 1. Upload to Walrus (always upload current content)
-      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey);
+      let result;
+      // CRITICAL: Use sessionAuthResult if available (just authorized), otherwise fall back to context state
+      const useSession = sessionAuthResult || (isSessionValid && sessionCap && ephemeralKeypair);
+      const activeKeypair = sessionAuthResult?.ephemeralKeypair || ephemeralKeypair;
+
+      if (useSession && activeKeypair) {
+        console.log('[App] Uploading to Walrus using session keypair');
+        result = await walrusService.uploadInkBlobContentWithSession(note.content, encryptionKey, activeKeypair);
+      } else {
+        console.log('[App] Uploading to Walrus without session keypair');
+        result = await walrusService.uploadInkBlobContent(note.content, encryptionKey);
+      }
       const blobId = result.blobId;
 
       // 2. Encrypt title

@@ -1,5 +1,5 @@
+import { getFullnodeUrl, SuiClient } from '@mysten/sui/client';
 import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
-import { getFullnodeUrl } from '@mysten/sui/client';
 import { walrus } from '@mysten/walrus';
 // Import WASM URL for Vite bundler
 import walrusWasmUrl from '@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url';
@@ -23,7 +23,7 @@ export const WALRUS_CONFIG = {
 };
 
 /**
- * Create Walrus-extended Sui client
+ * Create Walrus-extended Sui client with JSON RPC
  * Uses SuiJsonRpcClient with walrus() extension as per SDK v0.8.4 requirements
  */
 export function createWalrusClient() {
@@ -46,6 +46,40 @@ export function createWalrusClient() {
             },
         })
     );
+
+    return client;
+}
+
+/**
+ * Create Walrus client that can be used with session keypair for signing
+ * @param keypair The Ed25519Keypair to use for signing operations
+ * @returns Extended SuiClient that supports Walrus operations
+ */
+export function createWalrusClientWithKeypair(keypair: any) {
+    // We still create the same client, but the keypair info would be used differently
+    // Since the Walrus SDK expects address information internally,
+    // we need to ensure that when write operations happen,
+    // the keypair's address is available in the right context
+    const client = new SuiJsonRpcClient({
+        url: getFullnodeUrl('testnet'),
+        network: 'testnet',  // Add the network parameter that Walrus SDK requires
+    }).$extend(
+        walrus({
+            // Configure WASM URL for Vite bundler
+            wasmUrl: walrusWasmUrl,
+
+            // Configure upload relay for browser environments
+            uploadRelay: {
+                host: WALRUS_CONFIG.uploadRelay,
+                sendTip: {
+                    max: 1_000, // Maximum tip in MIST
+                },
+            },
+        })
+    );
+
+    // Attach the keypair to the client instance for reference if needed
+    (client as any).keypair = keypair;
 
     return client;
 }

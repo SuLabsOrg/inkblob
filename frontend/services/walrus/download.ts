@@ -10,16 +10,25 @@ export async function downloadBlob(blobId: string): Promise<Uint8Array> {
         const client = createWalrusClient();
 
         try {
-            // Fetch from aggregator
-            const blob = await client.read(blobId);
-            return new Uint8Array(await blob.arrayBuffer());
+            // Fetch blob using walrus() extension API
+            const blob = await client.walrus.readBlob({ blobId });
+
+            // Convert blob to Uint8Array
+            // The blob might be a Response or Blob object
+            if (blob instanceof Uint8Array) {
+                return blob;
+            } else if (blob instanceof Blob) {
+                return new Uint8Array(await blob.arrayBuffer());
+            } else if (blob && typeof blob === 'object' && 'arrayBuffer' in blob) {
+                return new Uint8Array(await blob.arrayBuffer());
+            } else {
+                // Fallback: try to convert to Uint8Array
+                return new Uint8Array(blob as any);
+            }
         } catch (error: any) {
             console.error('Walrus download failed:', error);
 
             // Check for 404 or specific error codes that indicate not found
-            // Note: The SDK might throw specific errors, we need to handle them.
-            // Assuming standard HTTP error structure or SDK specific structure.
-            // For now, we'll check message or status if available.
             if (error.status === 404 || error.message?.includes('not found')) {
                 throw new BlobNotFoundError(blobId);
             }

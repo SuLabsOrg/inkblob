@@ -24,17 +24,24 @@ export async function uploadBlob(
         const client = createWalrusClient();
 
         try {
-            // Upload blob via relay
-            const result = await client.store(encryptedContent, {
+            // Upload blob via upload relay
+            // Using walrus() extension API as per SDK v0.8.4
+            const result = await client.walrus.writeBlob({
+                blob: encryptedContent,
                 epochs,
+                deletable: false, // Blobs should persist for the specified epochs
             });
 
-            // Result contains:
-            // - blobId: unique content identifier
-            // - blobObject: Sui object reference for tracking
+            console.log('[Walrus Upload] Result:', result);
+
+            // Extract blob ID and object reference
+            // The result structure should contain blobId and possibly blobObject
+            const blobId = result.blobId;
+            const blobObject = result.blobObject?.blobId || result.blobObject?.id || blobId;
+
             return {
-                blobId: result.blobId,
-                blobObject: result.blobObject!.id, // Ensure we get the ID
+                blobId,
+                blobObject,
                 epochs,
             };
         } catch (error: any) {

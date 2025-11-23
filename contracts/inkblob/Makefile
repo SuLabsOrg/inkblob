@@ -4,7 +4,7 @@
 # Configuration
 PACKAGE_NAME := inkblob
 NETWORK := testnet
-GAS_BUDGET := 1000000000
+GAS_BUDGET := 300000000
 
 # Colors for output
 RED := \033[0;31m

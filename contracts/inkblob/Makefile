@@ -45,9 +45,9 @@ build:
 
 # Test commands
 test:
-	@echo "$(BLUE)Running unit tests...$(NC)"
+	@echo "$(BLUE)Running tests...$(NC)"
 	sui move test --silence-warnings --skip-fetch-latest-git-deps
-	@echo "$(GREEN)Unit tests completed!$(NC)"
+	@echo "$(GREEN)Tests completed!$(NC)"
 
 # Code quality and formatting
 check:

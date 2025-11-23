@@ -940,51 +940,6 @@ module inkblob::notebook {
         });
     }
 
-    /// Authorize device-specific hot wallet (simple version without funding)
-    public entry fun authorize_session_simple(
-        notebook: &Notebook,
-        device_fingerprint: string::String,
-        hot_wallet_address: address,
-        expires_at: u64,
-        ctx: &mut TxContext
-    ) {
-        let sender = tx_context::sender(ctx);
-
-        // Verify caller is notebook owner
-        assert!(notebook.owner == sender, E_NOT_OWNER);
-
-        // Verify expiration is in the future
-        let now = tx_context::epoch_timestamp_ms(ctx);
-        assert!(expires_at > now, E_INVALID_EXPIRATION);
-
-        // Create SessionCap with device info
-        let session_cap = SessionCap {
-            id: object::new(ctx),
-            notebook_id: object::uid_to_inner(&notebook.id),
-            device_fingerprint,
-            hot_wallet_address,
-            expires_at,
-            created_at: now,
-            auto_funded: false,
-        };
-        let session_cap_id_value = object::uid_to_inner(&session_cap.id);
-
-        // Transfer SessionCap to hot wallet
-        transfer::transfer(session_cap, hot_wallet_address);
-
-        // Emit event
-        event::emit(SessionAuthorized {
-            notebook_id: object::uid_to_inner(&notebook.id),
-            session_cap_id: session_cap_id_value,
-            hot_wallet_address,
-            device_fingerprint,
-            expires_at,
-            owner: sender,
-            sui_funded: 0,
-            wal_funded: 0,
-        });
-    }
-
     /// Revoke a session capability
     public entry fun revoke_session(
         notebook: &Notebook,

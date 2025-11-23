@@ -1,25 +1,46 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { useCurrentAccount, useSignPersonalMessage, useSuiClient, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { deriveDeviceFingerprint, deriveHotWallet } from '../crypto/sessionKey';
+import {
+    storeHotWallet,
+    retrieveHotWallet,
+    clearHotWallet,
+    hasValidStoredHotWallet,
+    getHotWalletInfo,
+    HOT_WALLET_ENCRYPTION_MESSAGE,
+} from '../crypto/hotWalletStorage';
 import { SuiService, PACKAGE_ID } from '../services/suiService';
-import { fromB64 } from '@mysten/sui/utils';
+import { retryUntil, RetryConditions } from '../utils/retry';
 
 interface SessionContextValue {
     sessionCap: any | null;
     ephemeralKeypair: Ed25519Keypair | null;
     isSessionValid: boolean;
+    sessionExpiresAt: number | null;
+    hotWalletAddress: string | null;
     authorizeSession: (notebookId: string) => Promise<void>;
     revokeSession: () => Promise<void>;
+    refreshSession: () => Promise<void>;
     isLoading: boolean;
+    error: string | null;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+// Session expiration warning threshold (1 hour before expiration)
+const EXPIRATION_WARNING_THRESHOLD = 60 * 60 * 1000;
+
+// WAL token testnet faucet URL
+const WAL_FAUCET_URL = 'https://faucet.testnet.walrus.space';
+
 export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [sessionCap, setSessionCap] = useState<any | null>(null);
     const [ephemeralKeypair, setEphemeralKeypair] = useState<Ed25519Keypair | null>(null);
+    const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
+    const [hotWalletAddress, setHotWalletAddress] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const currentAccount = useCurrentAccount();
     const client = useSuiClient();
@@ -27,41 +48,53 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
     const suiService = new SuiService(client);
 
-    const authorizeSession = async (notebookId: string) => {
+    /**
+     * Load existing session from encrypted localStorage
+     */
+    const loadStoredSession = useCallback(async () => {
         if (!currentAccount) return;
-        setIsLoading(true);
 
         try {
-            // 1. Derive Hot Wallet (requires user signature)
-            // SECURITY FIX (P0): deriveDeviceFingerprint is now async with SHA-256
             const fingerprint = await deriveDeviceFingerprint();
 
-            // Check for fingerprint format migration (old: "device_uuid", new: SHA-256 hex)
-            const oldFingerprint = localStorage.getItem('inkblob_last_fingerprint');
-            if (oldFingerprint && !oldFingerprint.match(/^[a-f0-9]{64}$/)) {
-                console.log('[SessionContext] Fingerprint format changed, clearing old session');
-                localStorage.removeItem('inkblob_last_fingerprint');
-                setSessionCap(null);
-                setEphemeralKeypair(null);
+            // Check if we have a valid stored hot wallet
+            const hasStored = await hasValidStoredHotWallet(fingerprint);
+            if (!hasStored) {
+                console.log('[SessionContext] No valid stored session found');
+                return;
             }
-            localStorage.setItem('inkblob_last_fingerprint', fingerprint);
 
-            const message = new TextEncoder().encode(
-                `Authorize InkBlob Session\nDevice: ${fingerprint}\nWallet: ${currentAccount.address}`
-            );
+            // Get session info for display
+            const info = getHotWalletInfo(fingerprint);
+            if (!info) return;
 
-            const { signature } = await signPersonalMessage({
-                message,
+            console.log('[SessionContext] Found stored session, attempting to restore...');
+
+            // Request signature for hot wallet encryption (CRYPTO-4: separate signature)
+            const encryptionMessage = new TextEncoder().encode(HOT_WALLET_ENCRYPTION_MESSAGE);
+            const { signature: encryptionSignature } = await signPersonalMessage({
+                message: encryptionMessage,
             });
 
-            const keypair = await deriveHotWallet(signature, fingerprint);
-            setEphemeralKeypair(keypair);
-            const hotWalletAddress = keypair.toSuiAddress();
+            // Retrieve and decrypt hot wallet
+            const keypair = await retrieveHotWallet(
+                fingerprint,
+                encryptionSignature,
+                currentAccount.address
+            );
 
-            // 2. Check for existing valid SessionCap
-            // We need to query objects owned by the hot wallet
+            if (!keypair) {
+                console.log('[SessionContext] Failed to decrypt stored session');
+                return;
+            }
+
+            setEphemeralKeypair(keypair);
+            setHotWalletAddress(keypair.toSuiAddress());
+            setSessionExpiresAt(info.expiresAt);
+
+            // Fetch SessionCap from blockchain
             const ownedObjects = await client.getOwnedObjects({
-                owner: hotWalletAddress,
+                owner: keypair.toSuiAddress(),
                 filter: { StructType: `${PACKAGE_ID}::notebook::SessionCap` },
                 options: { showContent: true },
             });
@@ -69,87 +102,311 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const validCap = ownedObjects.data.find(obj => {
                 const content = obj.data?.content as any;
                 if (!content || !content.fields) return false;
-                // Check expiration
                 const expiresAt = parseInt(content.fields.expires_at);
                 return expiresAt > Date.now();
             });
 
             if (validCap) {
-                console.log('Found valid session cap:', validCap.data?.objectId);
                 setSessionCap(validCap.data);
+                console.log('[SessionContext] Session restored successfully');
             } else {
-                console.log('No valid session cap found, creating new one...');
-                // 3. Create new SessionCap
-                // We need to find a WAL coin first
-                // For MVP, we'll just query all coins and pick the first one with balance > 0.5 WAL
-                // Note: This assumes the user has WAL coins.
-                const walCoins = await client.getCoins({
-                    owner: currentAccount.address,
-                    coinType: `${PACKAGE_ID}::wal::WAL`, // Replace with actual WAL type
-                });
-
-                if (walCoins.data.length === 0) {
-                    throw new Error('No WAL coins found. Please faucet some WAL.');
-                }
-
-                const walCoinId = walCoins.data[0].coinObjectId;
-                const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-                const tx = suiService.authorizeSessionTx(
-                    notebookId,
-                    fingerprint,
-                    hotWalletAddress,
-                    expiresAt,
-                    undefined, // default SUI
-                    undefined, // default WAL
-                    walCoinId
-                );
-
-                await signAndExecuteTransaction({
-                    transaction: tx,
-                });
-
-                // 4. Fetch the newly created SessionCap
-                // We might need to wait a bit or retry
-                // For now, let's just retry the query once
-                await new Promise(resolve => setTimeout(resolve, 2000));
-
-                const newOwnedObjects = await client.getOwnedObjects({
-                    owner: hotWalletAddress,
-                    filter: { StructType: `${PACKAGE_ID}::notebook::SessionCap` },
-                    options: { showContent: true },
-                });
-
-                if (newOwnedObjects.data.length > 0) {
-                    setSessionCap(newOwnedObjects.data[0].data);
-                } else {
-                    throw new Error('Failed to find SessionCap after creation');
-                }
+                console.log('[SessionContext] SessionCap not found or expired, clearing stored session');
+                clearHotWallet(fingerprint);
+                setEphemeralKeypair(null);
+                setHotWalletAddress(null);
+                setSessionExpiresAt(null);
             }
 
         } catch (error) {
-            console.error('Session authorization failed:', error);
-            alert('Session authorization failed. See console for details.');
+            console.error('[SessionContext] Failed to load stored session:', error);
+            // Don't show error to user, just log and continue
+        }
+    }, [currentAccount, client, signPersonalMessage]);
+
+    /**
+     * Authorize new session with enhanced error handling
+     */
+    const authorizeSession = async (notebookId: string) => {
+        if (!currentAccount) {
+            setError('Please connect your wallet first');
+            return;
+        }
+
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            // 1. Derive device fingerprint (P0: SHA-256)
+            const fingerprint = await deriveDeviceFingerprint();
+
+            // Check for fingerprint format migration
+            const oldFingerprint = localStorage.getItem('inkblob_last_fingerprint');
+            if (oldFingerprint && !oldFingerprint.match(/^[a-f0-9]{64}$/)) {
+                console.log('[SessionContext] Fingerprint format changed, clearing old session');
+                localStorage.removeItem('inkblob_last_fingerprint');
+                clearHotWallet(oldFingerprint);
+            }
+            localStorage.setItem('inkblob_last_fingerprint', fingerprint);
+
+            // 2. Request signature for hot wallet derivation
+            const authMessage = new TextEncoder().encode(
+                `Authorize InkBlob Session\nDevice: ${fingerprint.substring(0, 16)}...\nWallet: ${currentAccount.address}`
+            );
+            const { signature: authSignature } = await signPersonalMessage({
+                message: authMessage,
+            });
+
+            // 3. Derive hot wallet keypair (P1: HKDF context separation)
+            const keypair = await deriveHotWallet(authSignature, fingerprint);
+            const hotWallet = keypair.toSuiAddress();
+            setEphemeralKeypair(keypair);
+            setHotWalletAddress(hotWallet);
+
+            console.log('[SessionContext] Hot wallet derived:', hotWallet);
+
+            // 4. Check for existing valid SessionCap
+            const existingCaps = await client.getOwnedObjects({
+                owner: hotWallet,
+                filter: { StructType: `${PACKAGE_ID}::notebook::SessionCap` },
+                options: { showContent: true },
+            });
+
+            const validCap = existingCaps.data.find(obj => {
+                const content = obj.data?.content as any;
+                if (!content || !content.fields) return false;
+                const expiresAt = parseInt(content.fields.expires_at);
+                return expiresAt > Date.now();
+            });
+
+            let expiresAt: number;
+
+            if (validCap) {
+                // Use existing SessionCap
+                console.log('[SessionContext] Found valid existing SessionCap');
+                setSessionCap(validCap.data);
+                const content = validCap.data?.content as any;
+                expiresAt = parseInt(content.fields.expires_at);
+                setSessionExpiresAt(expiresAt);
+
+            } else {
+                // 5. Create new SessionCap
+                console.log('[SessionContext] Creating new SessionCap...');
+
+                // Check for WAL coins with better error handling
+                let walCoinId: string;
+                try {
+                    const walCoins = await client.getCoins({
+                        owner: currentAccount.address,
+                        coinType: `${PACKAGE_ID}::wal::WAL`,
+                    });
+
+                    if (walCoins.data.length === 0) {
+                        throw new Error(
+                            `No WAL tokens found in your wallet.\n\n` +
+                            `To create a session, you need WAL tokens for funding the hot wallet.\n\n` +
+                            `Please visit the WAL testnet faucet:\n${WAL_FAUCET_URL}\n\n` +
+                            `After receiving tokens, refresh and try again.`
+                        );
+                    }
+
+                    walCoinId = walCoins.data[0].coinObjectId;
+                    console.log('[SessionContext] Using WAL coin:', walCoinId);
+
+                } catch (walError: any) {
+                    // Enhance error message
+                    if (walError.message?.includes('No WAL')) {
+                        throw walError;
+                    }
+                    throw new Error(
+                        `Failed to query WAL tokens: ${walError.message}\n\n` +
+                        `Please ensure you have WAL tokens in your wallet.\n` +
+                        `Get WAL tokens from: ${WAL_FAUCET_URL}`
+                    );
+                }
+
+                // Calculate expiration (24 hours from now)
+                expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+                // Build transaction
+                const tx = suiService.authorizeSessionTx(
+                    notebookId,
+                    fingerprint,
+                    hotWallet,
+                    expiresAt,
+                    100000000, // 0.1 SUI
+                    500000000, // 0.5 WAL
+                    walCoinId
+                );
+
+                console.log('[SessionContext] Submitting SessionCap creation transaction...');
+                await signAndExecuteTransaction({ transaction: tx });
+
+                // 6. Wait for SessionCap with retry logic (replaces fixed delay)
+                console.log('[SessionContext] Waiting for SessionCap to appear on-chain...');
+                const newCap = await retryUntil(
+                    async () => {
+                        const objects = await client.getOwnedObjects({
+                            owner: hotWallet,
+                            filter: { StructType: `${PACKAGE_ID}::notebook::SessionCap` },
+                            options: { showContent: true },
+                        });
+                        return objects.data.find(obj => {
+                            const content = obj.data?.content as any;
+                            if (!content || !content.fields) return false;
+                            const capExpiresAt = parseInt(content.fields.expires_at);
+                            return capExpiresAt > Date.now();
+                        });
+                    },
+                    (result) => result !== null && result !== undefined,
+                    {
+                        maxAttempts: 10,
+                        initialDelay: 500,
+                        maxDelay: 3000,
+                        onRetry: (attempt, delay) => {
+                            console.log(`[SessionContext] Polling for SessionCap (attempt ${attempt}/10)...`);
+                        },
+                    }
+                );
+
+                if (!newCap) {
+                    throw new Error('SessionCap creation succeeded but object not found on-chain after 10 retries');
+                }
+
+                setSessionCap(newCap.data);
+                setSessionExpiresAt(expiresAt);
+                console.log('[SessionContext] SessionCap created successfully');
+            }
+
+            // 7. Store encrypted hot wallet (P1: CRYPTO-4 - separate signature)
+            console.log('[SessionContext] Encrypting and storing hot wallet...');
+            const encryptionMessage = new TextEncoder().encode(HOT_WALLET_ENCRYPTION_MESSAGE);
+            const { signature: encryptionSignature } = await signPersonalMessage({
+                message: encryptionMessage,
+            });
+
+            await storeHotWallet(
+                keypair,
+                fingerprint,
+                expiresAt,
+                encryptionSignature,
+                currentAccount.address
+            );
+
+            console.log('[SessionContext] Session authorized successfully');
+
+        } catch (error: any) {
+            console.error('[SessionContext] Session authorization failed:', error);
+            const errorMessage = error?.message || 'Unknown error occurred';
+            setError(errorMessage);
+
+            // Clear partial state
+            setSessionCap(null);
+            setEphemeralKeypair(null);
+            setHotWalletAddress(null);
+            setSessionExpiresAt(null);
+
+            // Re-throw for caller to handle
+            throw error;
+
         } finally {
             setIsLoading(false);
         }
     };
 
+    /**
+     * Revoke session and clear all data
+     */
     const revokeSession = async () => {
-        setSessionCap(null);
-        setEphemeralKeypair(null);
-        // In a real app, we might also want to call a revoke transaction on-chain
-        // to reclaim the funds, but for now we just clear local state.
+        try {
+            // Clear encrypted storage
+            const fingerprint = await deriveDeviceFingerprint();
+            clearHotWallet(fingerprint);
+
+            // Clear state
+            setSessionCap(null);
+            setEphemeralKeypair(null);
+            setHotWalletAddress(null);
+            setSessionExpiresAt(null);
+            setError(null);
+
+            console.log('[SessionContext] Session revoked successfully');
+
+            // TODO: Call on-chain revoke_session() to reclaim funds
+
+        } catch (error) {
+            console.error('[SessionContext] Failed to revoke session:', error);
+        }
     };
+
+    /**
+     * Refresh session (re-authorize before expiration)
+     */
+    const refreshSession = async () => {
+        if (!currentAccount || !sessionCap) return;
+
+        const content = sessionCap.content as any;
+        const notebookId = content?.fields?.notebook_id;
+
+        if (!notebookId) {
+            console.error('[SessionContext] Cannot refresh: notebook ID not found');
+            return;
+        }
+
+        // Revoke current session
+        await revokeSession();
+
+        // Authorize new session
+        await authorizeSession(notebookId);
+    };
+
+    /**
+     * Monitor session expiration and warn user
+     */
+    useEffect(() => {
+        if (!sessionExpiresAt) return;
+
+        const checkExpiration = () => {
+            const timeUntilExpiration = sessionExpiresAt - Date.now();
+
+            if (timeUntilExpiration <= 0) {
+                console.warn('[SessionContext] Session expired, clearing...');
+                revokeSession();
+            } else if (timeUntilExpiration <= EXPIRATION_WARNING_THRESHOLD) {
+                console.warn('[SessionContext] Session expiring soon:', new Date(sessionExpiresAt).toISOString());
+                // TODO: Show UI warning to user
+            }
+        };
+
+        // Check immediately
+        checkExpiration();
+
+        // Check every minute
+        const interval = setInterval(checkExpiration, 60 * 1000);
+
+        return () => clearInterval(interval);
+    }, [sessionExpiresAt]);
+
+    /**
+     * Auto-load stored session on mount
+     */
+    useEffect(() => {
+        if (currentAccount && !ephemeralKeypair && !isLoading) {
+            loadStoredSession();
+        }
+    }, [currentAccount, loadStoredSession]);
 
     return (
         <SessionContext.Provider value={{
             sessionCap,
             ephemeralKeypair,
-            isSessionValid: !!sessionCap && !!ephemeralKeypair,
+            isSessionValid: !!sessionCap && !!ephemeralKeypair && !!sessionExpiresAt && sessionExpiresAt > Date.now(),
+            sessionExpiresAt,
+            hotWalletAddress,
             authorizeSession,
             revokeSession,
-            isLoading
+            refreshSession,
+            isLoading,
+            error,
         }}>
             {children}
         </SessionContext.Provider>

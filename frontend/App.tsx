@@ -349,6 +349,9 @@ function AppContent() {
     if (!note) return;
 
     try {
+      // Track fresh session auth result (if we just authorized)
+      let sessionAuthResult = null;
+
       // Check session status and prompt for authorization if needed
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
@@ -362,8 +365,8 @@ function AppContent() {
         if (userConfirmed) {
           try {
             console.log('[App] User confirmed, authorizing session...');
-            await authorizeSession(notebook.data.objectId);
-            console.log('[App] Session authorized successfully, continuing with save...');
+            sessionAuthResult = await authorizeSession(notebook.data.objectId);
+            console.log('[App] Session authorized successfully:', sessionAuthResult);
           } catch (authError: any) {
             console.error('[App] Session authorization failed:', authError);
 
@@ -394,7 +397,19 @@ function AppContent() {
       }
 
       // 1. Upload to Walrus (always upload current content)
-      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey);
+      // Pass ephemeralKeypair if available to sign the upload transaction
+      // Use fresh keypair if available (from just-authorized session), otherwise fall back to context state
+      const activeKeypair = sessionAuthResult?.ephemeralKeypair || (isSessionValid ? ephemeralKeypair : undefined);
+      const signer = activeKeypair;
+
+      console.log('[App] Preparing upload with signer:', {
+        isSessionValid,
+        hasEphemeralKeypair: !!ephemeralKeypair,
+        hasFreshAuth: !!sessionAuthResult,
+        signerDefined: !!signer
+      });
+
+      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey, signer);
       const blobId = result.blobId;
 
       // 2. Encrypt title

@@ -9,10 +9,10 @@ export const WALRUS_CONFIG = {
     network: 'testnet' as const,
 
     // Upload relay for browser compatibility
-    uploadRelay: import.meta.env.VITE_WALRUS_PUBLISHER_URL || 'https://publisher.testnet.walrus.space',
+    uploadRelay: import.meta.env.VITE_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space',
 
     // Aggregator for downloads
-    aggregator: import.meta.env.VITE_WALRUS_AGGREGATOR_URL || 'https://aggregator.testnet.walrus.space',
+    aggregator: import.meta.env.VITE_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space',
 
     // Default storage duration (epochs)
     // 1 epoch ≈ 24 hours on testnet
@@ -26,11 +26,20 @@ export const WALRUS_CONFIG = {
  * Create Walrus-extended Sui client
  * Uses SuiJsonRpcClient with walrus() extension as per SDK v0.8.4 requirements
  */
-export function createWalrusClient() {
-    const client = new SuiJsonRpcClient({
+export function createWalrusClient(signer?: any) {
+    const baseClient = new SuiJsonRpcClient({
         url: getFullnodeUrl('testnet'),
         network: 'testnet',
-    }).$extend(
+    });
+
+    // Force assign signer if provided (bypassing type check)
+    // This is required because the Walrus SDK expects the client to have a signer
+    // but SuiJsonRpcClient types might not expose it directly in options
+    if (signer) {
+        (baseClient as any).signer = signer;
+    }
+
+    const client = baseClient.$extend(
         walrus({
             // Configure WASM URL for Vite bundler
             // This ensures the WASM file is properly loaded in browser

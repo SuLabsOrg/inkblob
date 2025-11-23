@@ -368,6 +368,8 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
             // Re-throw for caller to handle
             throw error;
 
+
+
         } finally {
             setIsLoading(false);
         }

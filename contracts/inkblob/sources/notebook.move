@@ -6,6 +6,7 @@ module inkblob::notebook {
     use sui::table::{Self, Table};
     use sui::event;
     use sui::coin::{Self, Coin};
+    use sui::sui::SUI;
     use std::string;
     use std::option::{Self, Option};
     use std::vector;
@@ -533,24 +534,53 @@ module inkblob::notebook {
         registry.active_notebook = notebook_name;
     }
 
-    /// Authorize session for device-specific hot wallet (simplified MVP version)
-    public entry fun authorize_session_simple(
+    
+    /// Authorize device-specific hot wallet with automatic funding
+    /// SECURITY: Properly handles coin objects and validates balances before transfer
+    public entry fun authorize_session_and_fund(
         notebook: &Notebook,
+        mut sui_coin: &mut Coin<SUI>,
+        mut wal_coin: &mut Coin<WAL>,
         device_fingerprint: string::String,
         hot_wallet_address: address,
         expires_at: u64,
+        sui_amount: option::Option<u64>,
+        wal_amount: option::Option<u64>,
         ctx: &mut TxContext
     ) {
         let sender = tx_context::sender(ctx);
-        let now = tx_context::epoch_timestamp_ms(ctx);
 
         // Verify caller is notebook owner
         assert!(notebook.owner == sender, E_NOT_OWNER);
 
         // Verify expiration is in the future
+        let now = tx_context::epoch_timestamp_ms(ctx);
         assert!(expires_at > now, E_INVALID_EXPIRATION);
 
-        // Create SessionCap with device info (no auto-funding for MVP)
+        // Default funding amounts if not specified
+        let default_sui = 100000000; // 0.1 SUI in MIST
+        let default_wal = 500000000; // 0.5 WAL (adjust based on WAL decimals)
+
+        let sui_to_transfer = if (option::is_some(&sui_amount)) {
+            *option::borrow(&sui_amount)
+        } else {
+            default_sui
+        };
+
+        let wal_to_transfer = if (option::is_some(&wal_amount)) {
+            *option::borrow(&wal_amount)
+        } else {
+            default_wal
+        };
+
+        // SECURITY FIX: Verify sufficient balance before proceeding
+        let sui_balance = coin::value(sui_coin);
+        let wal_balance = coin::value(wal_coin);
+
+        assert!(sui_balance >= sui_to_transfer, E_INSUFFICIENT_BALANCE);
+        assert!(wal_balance >= wal_to_transfer, E_INSUFFICIENT_WAL_BALANCE);
+
+        // Create SessionCap with device info and auto-funding flag
         let session_cap = SessionCap {
             id: object::new(ctx),
             notebook_id: object::uid_to_inner(&notebook.id),
@@ -558,14 +588,23 @@ module inkblob::notebook {
             hot_wallet_address,
             expires_at,
             created_at: now,
-            auto_funded: false,
+            auto_funded: true,
         };
         let session_cap_id_value = object::uid_to_inner(&session_cap.id);
+
+        // SECURITY FIX: Use coin::split for partial transfers
+        // Split the exact amounts needed for funding
+        let sui_payment = coin::split(sui_coin, sui_to_transfer, ctx);
+        let wal_payment = coin::split(wal_coin, wal_to_transfer, ctx);
+
+        // Transfer payments to hot wallet address
+        transfer::public_transfer(sui_payment, hot_wallet_address);
+        transfer::public_transfer(wal_payment, hot_wallet_address);
 
         // Transfer SessionCap to hot wallet
         transfer::transfer(session_cap, hot_wallet_address);
 
-        // Emit event
+        // Emit event with funding amounts
         event::emit(SessionAuthorized {
             notebook_id: object::uid_to_inner(&notebook.id),
             session_cap_id: session_cap_id_value,
@@ -573,8 +612,8 @@ module inkblob::notebook {
             device_fingerprint,
             expires_at,
             owner: sender,
-            sui_funded: 0,
-            wal_funded: 0,
+            sui_funded: sui_to_transfer,
+            wal_funded: wal_to_transfer,
         });
     }
 
@@ -606,7 +645,7 @@ module inkblob::notebook {
     }
 
     /// Update or create a note (handles both new notes and edits)
-    public entry fun update_note_direct(
+    public entry fun update_note(
         notebook: &mut Notebook,
         note_id: ID,
         blob_id: string::String,
@@ -716,7 +755,7 @@ module inkblob::notebook {
       }
 
     /// Move note to different folder (direct access)
-    public entry fun move_note_direct(
+    public entry fun move_note(
         notebook: &mut Notebook,
         note_id: ID,
         new_folder_id: option::Option<ID>,
@@ -742,7 +781,7 @@ module inkblob::notebook {
     }
 
     /// Update Walrus blob object ID after renewal (direct access)
-    public entry fun update_note_blob_object_direct(
+    public entry fun update_note_blob_object(
         notebook: &mut Notebook,
         note_id: ID,
         new_blob_object_id: string::String,
@@ -758,7 +797,7 @@ module inkblob::notebook {
     }
 
     /// Arweave Backup Metadata Update (direct access, MVP Feature)
-    public entry fun update_note_ar_backup_direct(
+    public entry fun update_note_ar_backup(
         notebook: &mut Notebook,
         note_id: ID,
         ar_tx_id: string::String,
@@ -788,7 +827,7 @@ module inkblob::notebook {
     }
 
     /// Create a new folder (direct access)
-    public entry fun create_folder_direct(
+    public entry fun create_folder(
         notebook: &mut Notebook,
         folder_id: ID,
         encrypted_name: string::String,
@@ -836,7 +875,7 @@ module inkblob::notebook {
     }
 
     /// Update folder (rename or move) - direct access
-    public entry fun update_folder_direct(
+    public entry fun update_folder(
         notebook: &mut Notebook,
         folder_id: ID,
         encrypted_name: string::String,
@@ -881,7 +920,7 @@ module inkblob::notebook {
     }
 
     /// Reorder folder within its parent level - direct access
-    public entry fun reorder_folder_direct(
+    public entry fun reorder_folder(
         notebook: &mut Notebook,
         folder_id: ID,
         new_sort_order: u64,
@@ -908,7 +947,7 @@ module inkblob::notebook {
     }
 
     /// Batch reorder multiple folders (for drag-and-drop operations) - direct access
-    public entry fun batch_reorder_folders_direct(
+    public entry fun batch_reorder_folders(
         notebook: &mut Notebook,
         folder_orders: vector<ID>,
         sort_orders: vector<u64>,
@@ -945,7 +984,7 @@ module inkblob::notebook {
     }
 
     /// Soft delete folder (set is_deleted flag) - direct access
-    public entry fun delete_folder_direct(
+    public entry fun delete_folder(
         notebook: &mut Notebook,
         folder_id: ID,
         ctx: &mut TxContext

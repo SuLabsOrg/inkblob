@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ConnectButton } from '@mysten/dapp-kit';
-import { ArrowRight, Shield, Zap, Globe } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 interface Particle {
     x: number;
@@ -23,7 +23,7 @@ export const LandingPage: React.FC = () => {
 
         let animationFrameId: number;
         let particles: Particle[] = [];
-        const particleCount = 100;
+        const particleCount = 60; // Reduced for cleaner look
         const connectionDistance = 150;
 
         const resizeCanvas = () => {
@@ -37,10 +37,10 @@ export const LandingPage: React.FC = () => {
                 particles.push({
                     x: Math.random() * canvas.width,
                     y: Math.random() * canvas.height,
-                    vx: (Math.random() - 0.5) * 0.5,
-                    vy: (Math.random() - 0.5) * 0.5,
+                    vx: (Math.random() - 0.5) * 0.3, // Slower movement
+                    vy: (Math.random() - 0.5) * 0.3,
                     size: Math.random() * 2 + 1,
-                    alpha: Math.random() * 0.5 + 0.2,
+                    alpha: Math.random() * 0.6 + 0.4, // Increased opacity
                 });
             }
         };
@@ -63,14 +63,14 @@ export const LandingPage: React.FC = () => {
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist < 200) {
                     const force = (200 - dist) / 200;
-                    p.vx -= (dx / dist) * force * 0.05;
-                    p.vy -= (dy / dist) * force * 0.05;
+                    p.vx -= (dx / dist) * force * 0.02;
+                    p.vy -= (dy / dist) * force * 0.02;
                 }
 
                 // Draw particle
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(100, 149, 237, ${p.alpha})`; // Cornflower Blue
+                ctx.fillStyle = `rgba(216, 180, 254, ${p.alpha})`; // Lighter Purple (Purple-300) for contrast
                 ctx.fill();
 
                 // Draw connections
@@ -85,7 +85,7 @@ export const LandingPage: React.FC = () => {
                         ctx.moveTo(p.x, p.y);
                         ctx.lineTo(p2.x, p2.y);
                         const alpha = 1 - dist2 / connectionDistance;
-                        ctx.strokeStyle = `rgba(100, 149, 237, ${alpha * 0.2})`;
+                        ctx.strokeStyle = `rgba(216, 180, 254, ${alpha * 0.3})`; // Increased connection opacity
                         ctx.stroke();
                     }
                 }
@@ -110,69 +110,42 @@ export const LandingPage: React.FC = () => {
     };
 
     return (
-        <div className="relative w-full h-screen overflow-hidden bg-white text-slate-900" onMouseMove={handleMouseMove}>
+        <div className="relative w-full h-screen overflow-hidden bg-[#0a0a0a] text-white" onMouseMove={handleMouseMove}>
             {/* Canvas Background */}
             <canvas
                 ref={canvasRef}
-                className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-50"
             />
 
-            {/* Navigation */}
-            <nav className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10">
-                <div className="flex items-center gap-2 font-bold text-xl tracking-tighter">
-                    <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-                        <Zap size={20} fill="currentColor" />
-                    </div>
-                    InkBlob
-                </div>
-                <div className="hidden md:flex gap-8 text-sm font-medium text-slate-600">
-                    <a href="#" className="hover:text-blue-600 transition-colors">Product</a>
-                    <a href="#" className="hover:text-blue-600 transition-colors">Security</a>
-                    <a href="#" className="hover:text-blue-600 transition-colors">Roadmap</a>
-                </div>
-                <div>
-                    {/* Placeholder for potential secondary action */}
-                </div>
-            </nav>
+            {/* Logo - Top Left */}
+            <div className="absolute top-8 left-8 z-20">
+                <img src="/logo.png" alt="InkBlob Logo" className="w-12 h-12 object-contain" />
+            </div>
 
             {/* Hero Content */}
             <div className="relative z-10 flex flex-col items-center justify-center h-full px-4 text-center">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold uppercase tracking-wider mb-6 border border-blue-100">
-                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-                    Live on Sui Testnet
+                <div className="mb-8 relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                    <img src="/logo.png" alt="InkBlob Logo" className="relative w-32 h-32 object-contain drop-shadow-2xl" />
                 </div>
 
-                <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 text-slate-900 max-w-4xl leading-tight">
-                    Experience liftoff with <br />
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-                        Decentralized Notes
-                    </span>
+                <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 text-transparent bg-clip-text bg-gradient-to-br from-white to-white/50">
+                    InkBlob
                 </h1>
 
-                <p className="text-lg md:text-xl text-slate-500 max-w-2xl mb-10 leading-relaxed">
-                    Secure, encrypted, and unstoppable. InkBlob leverages Sui and Walrus to give you a notebook that truly belongs to you.
+                <p className="text-lg md:text-xl text-zinc-400 max-w-xl mb-12 leading-relaxed font-light">
+                    Your decentralized sanctuary for thoughts. <br />
+                    Encrypted. Permanent. Yours.
                 </p>
 
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <div className="transform hover:scale-105 transition-transform duration-200">
-                        <ConnectButton className="!bg-slate-900 !text-white !px-8 !py-4 !rounded-full !font-bold !text-lg hover:!bg-slate-800 transition-all shadow-lg hover:shadow-xl" />
+                <div className="flex flex-col items-center gap-6">
+                    <div className="transform hover:scale-105 transition-transform duration-300">
+                        <ConnectButton className="!bg-white !text-black !px-8 !py-3 !rounded-full !font-bold !text-lg hover:!bg-zinc-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]" />
                     </div>
-                    <button className="px-8 py-3 rounded-full bg-white text-slate-700 font-bold border border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2 shadow-sm">
-                        Learn more <ArrowRight size={18} />
-                    </button>
-                </div>
 
-                {/* Features Grid (Bottom) */}
-                <div className="absolute bottom-10 left-0 w-full px-6 hidden md:flex justify-center gap-12 text-slate-400 text-sm font-medium">
-                    <div className="flex items-center gap-2">
-                        <Shield size={16} /> End-to-End Encrypted
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Globe size={16} /> Decentralized Storage
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Zap size={16} /> Instant Sync
-                    </div>
+                    <a href="https://github.com/SuLabsOrg/inkblob" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-white transition-colors text-sm flex items-center gap-1">
+                        View on GitHub <ArrowRight size={14} />
+                    </a>
                 </div>
             </div>
         </div>

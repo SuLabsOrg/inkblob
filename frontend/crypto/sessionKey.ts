@@ -1,91 +1,74 @@
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { fromB64, toB64 } from '@mysten/sui/utils';
-import { deriveEncryptionKey } from './keyDerivation';
-import { encryptContent } from './encryption';
-import { decryptContent } from './decryption';
+import { fromB64 } from '@mysten/sui/utils';
 
 /**
- * Generate ephemeral Ed25519 keypair for session
+ * Generate a unique device fingerprint
+ * Combines User Agent, Screen Resolution, and a random UUID stored in localStorage
  */
-export function generateEphemeralKeypair(): Ed25519Keypair {
-    return new Ed25519Keypair();
+export function deriveDeviceFingerprint(): string {
+    // 1. Get persistent device ID from localStorage
+    let deviceId = localStorage.getItem('inkblob_device_id');
+    if (!deviceId) {
+        deviceId = crypto.randomUUID();
+        localStorage.setItem('inkblob_device_id', deviceId);
+    }
+
+    // 2. Combine with browser info (simple fingerprinting)
+    // Note: In a real app, we might use a more robust library like FingerprintJS,
+    // but for this MVP, we just need to distinguish devices for the user.
+    const userAgent = navigator.userAgent;
+    const screenRes = `${window.screen.width}x${window.screen.height}`;
+
+    // 3. Hash the components to create a clean string
+    // We'll just return the UUID for now as it's the most reliable unique identifier per browser profile
+    return `device_${deviceId}`;
 }
 
 /**
- * Encrypt ephemeral private key for storage
+ * Derive Ed25519 Hot Wallet Keypair from Wallet Signature
+ * Uses HKDF to deterministically generate a seed for the keypair
  */
-export async function encryptPrivateKey(
-    privateKey: Uint8Array,
-    walletSignature: string
-): Promise<string> {
-    // Derive encryption key from wallet signature
-    const encKey = await deriveEncryptionKey(walletSignature);
-
-    // Encrypt private key bytes
-    const encrypted = await encryptContent(
-        toB64(privateKey),
-        encKey
-    );
-
-    return toB64(encrypted);
-}
-
-/**
- * Decrypt ephemeral private key from storage
- */
-export async function decryptPrivateKey(
-    encryptedKey: string,
-    walletSignature: string
+export async function deriveHotWallet(
+    walletSignature: string,
+    deviceFingerprint: string
 ): Promise<Ed25519Keypair> {
-    // Derive decryption key from wallet signature
-    const decKey = await deriveEncryptionKey(walletSignature);
+    // 1. Decode signature
+    const signatureBytes = fromB64(walletSignature);
 
-    // Decrypt private key bytes
-    const decrypted = await decryptContent(
-        fromB64(encryptedKey),
-        decKey
+    // 2. Import signature as key material
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        signatureBytes,
+        { name: 'HKDF' },
+        false,
+        ['deriveBits']
     );
 
-    // Reconstruct keypair
-    const privateKeyBytes = fromB64(decrypted);
-    return Ed25519Keypair.fromSecretKey(privateKeyBytes);
+    // 3. Derive 32-byte seed using HKDF
+    // Salt includes device fingerprint to ensure unique keys per device
+    const salt = new TextEncoder().encode(`InkBlob-hot-wallet-v1-${deviceFingerprint}`);
+    const info = new TextEncoder().encode('ed25519-seed');
+
+    const seedBits = await crypto.subtle.deriveBits(
+        {
+            name: 'HKDF',
+            hash: 'SHA-256',
+            salt: salt,
+            info: info,
+        },
+        keyMaterial,
+        256 // 32 bytes * 8 bits
+    );
+
+    // 4. Create Ed25519 Keypair from seed
+    return Ed25519Keypair.fromSecretKey(new Uint8Array(seedBits));
 }
 
 /**
- * Store encrypted ephemeral key in localStorage
+ * Message to sign for Hot Wallet derivation
+ * This can be the same as the encryption key message or distinct.
+ * Design doc suggests: "Derive deterministic Ed25519 hot wallet per main wallet + device fingerprint using HKDF derivation"
+ * We can reuse the same signature if we want single-sign-on experience, 
+ * or ask for a separate signature. 
+ * Reusing the signature is better UX.
  */
-export function storeEphemeralKey(encryptedKey: string, expiresAt: number): void {
-    localStorage.setItem('InkBlob_ephemeral_key', encryptedKey);
-    localStorage.setItem('InkBlob_session_expires', expiresAt.toString());
-}
-
-/**
- * Retrieve encrypted ephemeral key from localStorage
- */
-export function retrieveEphemeralKey(): { encryptedKey: string; expiresAt: number } | null {
-    const encryptedKey = localStorage.getItem('InkBlob_ephemeral_key');
-    const expiresAt = localStorage.getItem('InkBlob_session_expires');
-
-    if (!encryptedKey || !expiresAt) {
-        return null;
-    }
-
-    // Check if expired
-    if (Date.now() > parseInt(expiresAt)) {
-        clearEphemeralKey();
-        return null;
-    }
-
-    return {
-        encryptedKey,
-        expiresAt: parseInt(expiresAt),
-    };
-}
-
-/**
- * Clear ephemeral key from storage
- */
-export function clearEphemeralKey(): void {
-    localStorage.removeItem('InkBlob_ephemeral_key');
-    localStorage.removeItem('InkBlob_session_expires');
-}

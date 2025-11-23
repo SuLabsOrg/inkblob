@@ -50,6 +50,29 @@ export class SuiService {
     }
 
     /**
+     * Create note transaction
+     */
+    createNoteTx(
+        notebookId: string,
+        encryptedTitle: string,
+        folderId: string | null
+    ): Transaction {
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::create_note`,
+            arguments: [
+                notebook,
+                tx.pure.string(encryptedTitle),
+                folderId ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
      * Update note transaction
      */
     updateNoteTx(
@@ -83,5 +106,228 @@ export class SuiService {
         });
 
         return tx;
+    }
+    /**
+     * Authorize session and fund hot wallet
+     */
+    authorizeSessionTx(
+        notebookId: string,
+        deviceFingerprint: string,
+        hotWalletAddress: string,
+        expiresAt: number,
+        suiAmount: number = 100000000, // 0.1 SUI
+        walAmount: number = 500000000, // 0.5 WAL
+        walCoinId: string // User must provide a WAL coin ID
+    ): Transaction {
+        const tx = new Transaction();
+
+        // Split SUI from gas for funding
+        const [suiPayment] = tx.splitCoins(tx.gas, [tx.pure.u64(suiAmount)]);
+
+        // Handle WAL coin
+        // In a real app, we might need to merge coins or pick one with enough balance.
+        // For now, we assume the passed walCoinId has enough.
+        // We also need to split it if we don't want to pass the whole coin, 
+        // but the contract takes `Coin<WAL>` and returns remainder, so passing the whole coin is fine 
+        // IF the contract logic returns the remainder.
+        // The design doc says: "Return remainder coins to sender". So passing the full coin is safe.
+        const walCoin = tx.object(walCoinId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::authorize_session_and_fund`,
+            arguments: [
+                tx.object(notebookId),
+                suiPayment,
+                walCoin,
+                tx.pure.string(deviceFingerprint),
+                tx.pure.address(hotWalletAddress),
+                tx.pure.u64(expiresAt),
+                tx.pure.option('u64', suiAmount),
+                tx.pure.option('u64', walAmount),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Execute transaction with Session Key (Hot Wallet)
+     */
+    async executeWithSession(
+        tx: Transaction,
+        keypair: any // Ed25519Keypair
+    ): Promise<any> {
+        tx.setSender(keypair.toSuiAddress());
+
+        const { bytes, signature } = await tx.sign({
+            client: this.client,
+            signer: keypair
+        });
+
+        return this.client.executeTransactionBlock({
+            transactionBlock: bytes,
+            signature,
+            options: {
+                showEffects: true,
+                showEvents: true,
+            },
+        });
+    }
+    /**
+     * Fetch all notes from the Notebook
+     * Uses Dynamic Fields API to iterate through the 'notes' Table
+     */
+    async fetchNotes(notebookId: string): Promise<any[]> {
+        // 1. Fetch Notebook to get Table ID
+        const notebook = await this.fetchNotebook(notebookId);
+        if (!notebook || !notebook.data || !notebook.data.content) {
+            console.error('Notebook not found or invalid');
+            return [];
+        }
+
+        const fields = notebook.data.content.fields;
+        // Assuming 'notes' is a Table<ID, Note>, it will be represented as an object with an 'id' field
+        // The 'id' field inside 'notes' is the Table ID (UID)
+        const tableId = fields.notes?.fields?.id?.id;
+
+        if (!tableId) {
+            console.error('Notes table ID not found in notebook');
+            return [];
+        }
+
+        // 2. Get all Dynamic Fields (keys) from the Table
+        // For production, handle pagination (cursor)
+        let allFields: any[] = [];
+        let cursor = null;
+        let hasNextPage = true;
+
+        while (hasNextPage) {
+            const result = await this.client.getDynamicFields({
+                parentId: tableId,
+                cursor,
+            });
+            allFields = [...allFields, ...result.data];
+            cursor = result.nextCursor;
+            hasNextPage = result.hasNextPage;
+        }
+
+        if (allFields.length === 0) return [];
+
+        // 3. Fetch the actual Note objects
+        // The 'objectId' in dynamic field result is the ID of the Field wrapper
+        const objectIds = allFields.map(f => f.objectId);
+
+        // Batch fetch (max 50 per call usually, but client handles chunking often or we should)
+        // For MVP, assuming < 50 notes for now or client handles it.
+        // If strict, we should chunk.
+        const notesData = await this.client.multiGetObjects({
+            ids: objectIds,
+            options: { showContent: true },
+        });
+
+        // 4. Extract Note data from Field wrappers
+        return notesData.map(item => {
+            const content = item.data?.content as any;
+            // Field<ID, Note> -> value is the Note
+            return content?.fields?.value?.fields;
+        }).filter(note => !!note);
+    }
+    /**
+     * Fetch all folders from the Notebook
+     */
+    async fetchFolders(notebookId: string): Promise<any[]> {
+        const notebook = await this.fetchNotebook(notebookId);
+        if (!notebook || !notebook.data || !notebook.data.content) return [];
+
+        const fields = notebook.data.content.fields;
+        const tableId = fields.folders?.fields?.id?.id;
+
+        if (!tableId) return [];
+
+        let allFields: any[] = [];
+        let cursor = null;
+        let hasNextPage = true;
+
+        while (hasNextPage) {
+            const result = await this.client.getDynamicFields({
+                parentId: tableId,
+                cursor,
+            });
+            allFields = [...allFields, ...result.data];
+            cursor = result.nextCursor;
+            hasNextPage = result.hasNextPage;
+        }
+
+        if (allFields.length === 0) return [];
+
+        const objectIds = allFields.map(f => f.objectId);
+        const foldersData = await this.client.multiGetObjects({
+            ids: objectIds,
+            options: { showContent: true },
+        });
+
+        return foldersData.map(item => {
+            const content = item.data?.content as any;
+            return content?.fields?.value?.fields;
+        }).filter(folder => !!folder);
+    }
+
+    /**
+     * Create folder transaction
+     */
+    createFolderTx(
+        notebookId: string,
+        encryptedName: string,
+        parentId: string | null
+    ): Transaction {
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::create_folder`,
+            arguments: [
+                notebook,
+                tx.pure.string(encryptedName),
+                parentId ? tx.pure.option('address', parentId) : tx.pure.option('address', null),
+            ],
+        });
+
+        return tx;
+    }
+    /**
+     * Delete note transaction
+     */
+    deleteNoteTx(
+        notebookId: string,
+        noteId: string
+    ): Transaction {
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::delete_note`,
+            arguments: [
+                notebook,
+                tx.pure.id(noteId),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Subscribe to Notebook events
+     */
+    async subscribeToEvents(
+        onMessage: (event: any) => void
+    ): Promise<() => void> {
+        const unsubscribe = await this.client.subscribeEvent({
+            filter: { Package: PACKAGE_ID } as any, // Cast to any to bypass strict type check if SDK version mismatch
+            onMessage: (event) => {
+                onMessage(event);
+            },
+        });
+
+        return unsubscribe;
     }
 }

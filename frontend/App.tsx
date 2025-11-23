@@ -1,52 +1,43 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useState, useEffect, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { Editor } from './components/Editor';
-import { Header } from './components/Header';
-import { Note, Folder } from './types';
+import { ThemeProvider } from './context/ThemeContext';
+import { EncryptionProvider, useEncryption } from './context/EncryptionContext';
+import { SessionProvider, useSession } from './context/SessionContext';
+import { SyncProvider } from './context/SyncContext';
+import { Onboarding } from './components/Onboarding';
+import { LandingPage } from './components/LandingPage';
 import { useFolders } from './hooks/useFolders';
 import { useNotes } from './hooks/useNotes';
-import { useCurrentAccount } from '@mysten/dapp-kit';
-import { ThemeProvider } from './context/ThemeContext';
+import { useNotebook } from './hooks/useNotebook';
+import { useSuiService } from './hooks/useSuiService';
+import { Folder, Note } from './types';
+import { encryptText } from './crypto/encryption';
+import * as walrusService from './services/walrus';
 
-// Mock data for fallback
+// Mock Data (Fallback)
 const INITIAL_FOLDERS: Folder[] = [
-  { id: 'all', name: 'All Notes', icon: 'archive', type: 'system' },
-  { id: 'notes', name: 'Notes', icon: 'folder', type: 'system' },
-  { id: 'smart', name: 'Smart Folder', icon: 'smart', type: 'user' },
-  { id: 'trash', name: 'Recently Deleted', icon: 'trash', type: 'system' },
+  { id: 'notes', name: 'Notes', icon: 'file-text', type: 'system' },
+  { id: 'trash', name: 'Trash', icon: 'trash', type: 'system' },
 ];
 
-const INITIAL_NOTES: Note[] = [
-  {
-    id: '1',
-    title: 'Project Ideas',
-    content: '1. DApp for Notes\n2. AI Integration\n3. Web3 Login',
-    folderId: 'notes',
-    updatedAt: new Date(),
-  },
-  {
-    id: '2',
-    title: 'Groceries',
-    content: 'Milk\nEggs\nBread\nCoffee Beans',
-    folderId: 'notes',
-    updatedAt: new Date(Date.now() - 86400000), // Yesterday
-  }
-];
-
-export default function App() {
+function AppContent() {
   const currentAccount = useCurrentAccount();
+  const { encryptionKey } = useEncryption();
+  const { data: notebook, isLoading: isNotebookLoading, refetch: refetchNotebook } = useNotebook();
+  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+  const suiService = useSuiService();
+  const { isSessionValid, sessionCap, ephemeralKeypair } = useSession();
 
   // Hooks for data fetching
   const { data: fetchedFolders } = useFolders();
   const { data: fetchedNotes } = useNotes();
 
   // State
-  // Use fetched data if available, otherwise mock data (or empty if connected but no data)
-  // For MVP, we'll merge or toggle. 
-  // If wallet connected, try to use fetched data. If not, use local mock.
   const [folders, setFolders] = useState<Folder[]>(INITIAL_FOLDERS);
-  const [notes, setNotes] = useState<Note[]>(INITIAL_NOTES);
+  const [notes, setNotes] = useState<Note[]>([]);
 
   const [selectedFolderId, setSelectedFolderId] = useState<string>('notes');
   const [selecteInkBlobId, setSelecteInkBlobId] = useState<string | null>(null);
@@ -91,101 +82,220 @@ export default function App() {
   }, [notes, selectedFolderId, searchQuery]);
 
   // Actions
-  const handleCreateNote = () => {
+  const handleCreateNote = async () => {
+    // 1. Optimistic Update
     const newNote: Note = {
       id: crypto.randomUUID(),
-      title: '',
+      title: 'New Note',
       content: '',
       folderId: selectedFolderId === 'trash' || selectedFolderId === 'all' ? 'notes' : selectedFolderId,
       updatedAt: new Date(),
+      blobId: '',
     };
     setNotes([newNote, ...notes]);
     setSelecteInkBlobId(newNote.id);
 
-    // TODO: Call suiService.createNoteTx() and walrusService.uploadInkBlobContent()
-  };
+    if (!notebook?.data?.objectId || !encryptionKey) {
+      // Fallback for local testing if notebook not ready (bypassed mode)
+      return;
+    }
 
-  const handleCreateFolder = () => {
-    const name = prompt("Enter folder name:");
-    if (name) {
-      const newFolder: Folder = {
-        id: crypto.randomUUID(),
-        name,
-        icon: 'folder',
-        type: 'user'
-      };
-      setFolders([...folders, newFolder]);
-      // TODO: Call suiService.createFolderTx()
+    try {
+      const encryptedTitle = await encryptText('New Note', encryptionKey);
+      const tx = suiService.createNoteTx(notebook.data.objectId, encryptedTitle, selectedFolderId === 'all' ? null : selectedFolderId);
+
+      await signAndExecuteTransaction({ transaction: tx });
+      // SyncContext will handle invalidation
+    } catch (error) {
+      console.error('Failed to create note:', error);
+      alert('Failed to create note');
+      // Revert optimistic update
+      setNotes(prev => prev.filter(n => n.id !== newNote.id));
+      if (selecteInkBlobId === newNote.id) setSelecteInkBlobId(null);
     }
   };
 
-  const handleUpdateNote = (id: string, updates: Partial<Note>) => {
+  const handleCreateFolder = async () => {
+    const name = prompt("Enter folder name:");
+    if (!name) return;
+
+    // 1. Optimistic Update
+    const newFolder: Folder = {
+      id: crypto.randomUUID(),
+      name,
+      icon: 'folder',
+      type: 'user'
+    };
+    setFolders([...folders, newFolder]);
+
+    if (!notebook?.data?.objectId || !encryptionKey) {
+      // Local fallback
+      return;
+    }
+
+    try {
+      const encryptedName = await encryptText(name, encryptionKey);
+      const tx = suiService.createFolderTx(notebook.data.objectId, encryptedName, null);
+      await signAndExecuteTransaction({ transaction: tx });
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      alert('Failed to create folder');
+      // Revert optimistic update
+      setFolders(prev => prev.filter(f => f.id !== newFolder.id));
+    }
+  };
+
+  const handleUpdateNote = async (id: string, updates: Partial<Note>) => {
+    // Optimistic update
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
 
-    // TODO: Implement Debounced Auto-save
-    // 1. Encrypt content
-    // 2. Upload to Walrus -> get Blob ID
-    // 3. Update Note Object on Sui with new Blob ID
-  };
+    if (!notebook?.data?.objectId || !encryptionKey) return;
 
-  const handleDeleteNote = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this note?")) {
-      setNotes(prev => prev.filter(n => n.id !== id));
-      if (selecteInkBlobId === id) setSelecteInkBlobId(null);
-      // TODO: Call suiService.deleteNoteTx()
+    try {
+      const note = notes.find(n => n.id === id);
+      if (!note) return;
+
+      const newTitle = updates.title ?? note.title;
+      const newContent = updates.content ?? note.content;
+
+      // 1. Upload to Walrus if content changed
+      let blobId = note.blobId;
+      if (updates.content !== undefined) {
+        const result = await walrusService.uploadInkBlobContent(newContent, encryptionKey);
+        blobId = result.blobId;
+      }
+
+      // 2. Encrypt title
+      const encryptedTitle = await encryptText(newTitle, encryptionKey);
+
+      // 3. Update on Sui
+      const capId = isSessionValid && sessionCap ? sessionCap.objectId : null;
+      const tx = suiService.updateNoteTx(
+        notebook.data.objectId,
+        capId,
+        id,
+        blobId,
+        encryptedTitle,
+        note.folderId
+      );
+
+      if (isSessionValid && ephemeralKeypair) {
+        await suiService.executeWithSession(tx, ephemeralKeypair);
+      } else {
+        await signAndExecuteTransaction({ transaction: tx });
+      }
+
+    } catch (error) {
+      console.error('Failed to update note:', error);
+      // Revert optimistic update?
     }
   };
 
-  const activeNote = notes.find(n => n.id === selecteInkBlobId) || null;
+  const handleDeleteNote = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this note?")) {
+      // Optimistic delete
+      setNotes(prev => prev.filter(n => n.id !== id));
+      if (selecteInkBlobId === id) setSelecteInkBlobId(null);
 
+      if (!notebook?.data?.objectId) return;
+
+      try {
+        const tx = suiService.deleteNoteTx(notebook.data.objectId, id);
+        await signAndExecuteTransaction({ transaction: tx });
+      } catch (error) {
+        console.error('Failed to delete note:', error);
+        alert('Failed to delete note');
+      }
+    }
+  };
+
+  // --- Render Logic ---
+
+  // 1. Not Connected
+  if (!currentAccount) {
+    return <LandingPage />;
+  }
+
+  // 2. Connected, but Locked (No Encryption Key)
+  if (!encryptionKey) {
+    return <Onboarding mode="unlock" />;
+  }
+
+  // 3. Unlocked, but No Notebook (New User)
+  // We need to wait for notebook query to finish
+  if (isNotebookLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background text-foreground">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // if (!notebook) {
+  //   return <Onboarding mode="initialize" onComplete={refetchNotebook} />;
+  // }
+
+  // 4. Main App (Unlocked & Initialized)
   return (
-    <ThemeProvider>
-      <div className="flex h-screen w-full bg-web3-bg text-web3-text font-sans overflow-hidden bg-hero-glow bg-cover bg-no-repeat bg-fixed transition-colors duration-300">
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-3xl z-0 dark:bg-black/80 bg-white/60"></div>
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+      <Sidebar
+        folders={folders}
+        selectedFolderId={selectedFolderId}
+        onSelectFolder={setSelectedFolderId}
+        onCreateFolder={handleCreateFolder}
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+      />
 
-        <div className="relative z-10 flex h-full w-full">
-          {/* Sidebar (Collapsible) */}
-          <Sidebar
-            folders={folders}
-            selectedFolderId={selectedFolderId}
-            onSelectFolder={(id) => {
-              setSelectedFolderId(id);
-              setSelecteInkBlobId(null);
-            }}
-            onCreateFolder={handleCreateFolder}
-            isOpen={sidebarOpen}
-          />
-
-          {/* Main Content Area */}
-          <div className="flex-1 flex flex-col h-full min-w-0 glass m-4 rounded-2xl overflow-hidden shadow-2xl border-web3-border/50">
-
-            {/* Header with Wallet Connect */}
-            <Header
-              sidebarOpen={sidebarOpen}
-              setSidebarOpen={setSidebarOpen}
-              folderName={folders.find(f => f.id === selectedFolderId)?.name}
-              onCreateNote={handleCreateNote}
-            />
-
-            {/* Note List & Editor Split */}
-            <div className="flex-1 flex overflow-hidden">
-              <NoteList
-                notes={filtereInkBlobs}
-                selecteInkBlobId={selecteInkBlobId}
-                onSelectNote={setSelecteInkBlobId}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-              />
-              <Editor
-                note={activeNote}
-                onUpdateNote={handleUpdateNote}
-                onDeleteNote={handleDeleteNote}
-                onCreateNote={handleCreateNote}
-              />
-            </div>
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="h-14 border-b flex items-center justify-between px-4 bg-card">
+          <div className="flex items-center gap-2">
+            {/* Header Content */}
+          </div>
+          <div className="flex items-center gap-4">
+            <ConnectButton />
           </div>
         </div>
+
+        <div className="flex-1 flex overflow-hidden">
+          <NoteList
+            notes={filtereInkBlobs}
+            selectedNoteId={selecteInkBlobId}
+            onSelectNote={setSelecteInkBlobId}
+            onCreateNote={handleCreateNote}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          />
+
+          <main className="flex-1 bg-background overflow-y-auto relative">
+            {selecteInkBlobId ? (
+              <Editor
+                note={notes.find(n => n.id === selecteInkBlobId)!}
+                onUpdate={handleUpdateNote}
+                onDelete={handleDeleteNote}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                Select a note or create a new one
+              </div>
+            )}
+          </main>
+        </div>
       </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <EncryptionProvider>
+        <SessionProvider>
+          <SyncProvider>
+            <AppContent />
+          </SyncProvider>
+        </SessionProvider>
+      </EncryptionProvider>
     </ThemeProvider>
   );
 }

@@ -42,6 +42,18 @@ export async function encryptText(
 ): Promise<string> {
     const encrypted = await encryptContent(text, key);
 
-    // Return as base64 for storage in blockchain strings
-    return btoa(String.fromCharCode(...encrypted));
+    // Return as base64, but use a UTF-8 safe approach
+    // Convert Uint8Array to base64 using a safer method
+    const binaryString = Array.from(encrypted, byte => String.fromCharCode(byte)).join('');
+    const base64String = btoa(binaryString);
+
+    console.debug('[encryptText] Encrypted text:', {
+        originalLength: text.length,
+        encryptedLength: encrypted.length,
+        base64Length: base64String.length,
+        originalPreview: text.substring(0, 20),
+        base64Preview: base64String.substring(0, 40) + '...'
+    });
+
+    return base64String;
 }

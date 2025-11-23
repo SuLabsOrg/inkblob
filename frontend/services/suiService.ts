@@ -394,7 +394,22 @@ export class SuiService {
         return notesData.map(item => {
             const content = item.data?.content as any;
             // Field<ID, Note> -> value is the Note
-            return content?.fields?.value?.fields;
+            const note = content?.fields?.value?.fields;
+
+            // Debug: Log note structure for investigation
+            console.debug('[SuiService] Fetched note:', {
+                objectId: item.data?.objectId,
+                hasContent: !!content,
+                hasFields: !!content?.fields,
+                hasValue: !!content?.fields?.value,
+                hasValueFields: !!content?.fields?.value?.fields,
+                noteKeys: note ? Object.keys(note) : [],
+                encryptedTitle: note?.encrypted_title,
+                encryptedTitleType: typeof note?.encrypted_title,
+                encryptedTitleLength: note?.encrypted_title?.length || 0
+            });
+
+            return note;
         }).filter(note => !!note);
     }
     /**

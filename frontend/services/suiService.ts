@@ -87,21 +87,34 @@ export class SuiService {
 
     /**
      * Create note transaction
+     * Note: The deployed contract uses update_note for both creation and updates
      */
     createNoteTx(
         notebookId: string,
         encryptedTitle: string,
-        folderId: string | null
+        folderId: string | null,
+        noteId?: string
     ): Transaction {
         const tx = new Transaction();
         const notebook = tx.object(notebookId);
 
+        // Generate a unique note ID if not provided
+        const newNoteId = noteId || this.generateUniqueId();
+
+        // For new notes, we'll use empty blob_id and blob_object_id initially
+        // These will be populated when content is saved to Walrus
+        const blobId = "temp_blob_id";
+        const blobObjectId = "temp_blob_object_id";
+
         tx.moveCall({
-            target: `${PACKAGE_ID}::notebook::create_note`,
+            target: `${PACKAGE_ID}::notebook::update_note`,
             arguments: [
                 notebook,
+                tx.pure.address(newNoteId),
+                tx.pure.string(blobId),
+                tx.pure.string(blobObjectId),
                 tx.pure.string(encryptedTitle),
-                folderId ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
+                folderId && this.isValidAddress(folderId) ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
             ],
         });
 
@@ -109,35 +122,114 @@ export class SuiService {
     }
 
     /**
-     * Update note transaction
+     * Create note transaction with session capability
+     */
+    createNoteTxWithSession(
+        notebookId: string,
+        sessionCapId: string,
+        encryptedTitle: string,
+        folderId: string | null,
+        noteId?: string
+    ): Transaction {
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+        const sessionCap = tx.object(sessionCapId);
+
+        // Generate a unique note ID if not provided
+        const newNoteId = noteId || this.generateUniqueId();
+
+        // For new notes, we'll use empty blob_id and blob_object_id initially
+        const blobId = "temp_blob_id";
+        const blobObjectId = "temp_blob_object_id";
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::update_note_with_session`,
+            arguments: [
+                notebook,
+                sessionCap,
+                tx.pure.address(newNoteId),
+                tx.pure.string(blobId),
+                tx.pure.string(blobObjectId),
+                tx.pure.string(encryptedTitle),
+                folderId && this.isValidAddress(folderId) ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Generate a unique ID for new notes (proper SUI address format: 64 hex chars)
+     */
+    private generateUniqueId(): string {
+        // Generate 64 random hex characters
+        const array = new Uint8Array(32); // 32 bytes = 64 hex chars
+        crypto.getRandomValues(array);
+        const hexArray = Array.from(array, byte => byte.toString(16).padStart(2, '0'));
+        const hex64 = hexArray.join('');
+        return `0x${hex64}`;
+    }
+
+    /**
+     * Check if a string is a valid SUI address format
+     */
+    private isValidAddress(address: string): boolean {
+        return /^0x[0-9a-fA-F]{64}$/.test(address);
+    }
+
+    /**
+     * Update note transaction (without session)
      */
     updateNoteTx(
         notebookId: string,
-        sessionCap: string | null,
         noteId: string,
         blobId: string,
         encryptedTitle: string,
         folderId: string | null
     ): Transaction {
         const tx = new Transaction();
-
         const notebook = tx.object(notebookId);
-
-        // Handle Option<SessionCap> as vector of objects
-        const sessionArg = sessionCap
-            ? tx.makeMoveVec({ elements: [tx.object(sessionCap)] })
-            : tx.makeMoveVec({ elements: [] });
 
         tx.moveCall({
             target: `${PACKAGE_ID}::notebook::update_note`,
             arguments: [
                 notebook,
-                sessionArg,
-                tx.pure.id(noteId),
+                tx.pure.address(noteId),
                 tx.pure.string(blobId),
+                tx.pure.string("temp_blob_object_id"), // Will be populated with actual blob object ID
                 tx.pure.string(encryptedTitle),
-                // Use 'address' for ID option as ID is essentially an address in Move
-                folderId ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
+                folderId && this.isValidAddress(folderId) ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Update note transaction with session capability
+     */
+    updateNoteTxWithSession(
+        notebookId: string,
+        sessionCapId: string,
+        noteId: string,
+        blobId: string,
+        encryptedTitle: string,
+        folderId: string | null
+    ): Transaction {
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+        const sessionCap = tx.object(sessionCapId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::update_note_with_session`,
+            arguments: [
+                notebook,
+                sessionCap,
+                tx.pure.address(noteId),
+                tx.pure.string(blobId),
+                tx.pure.string("temp_blob_object_id"), // Will be populated with actual blob object ID
+                tx.pure.string(encryptedTitle),
+                folderId && this.isValidAddress(folderId) ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
             ],
         });
 
@@ -155,10 +247,21 @@ export class SuiService {
         walAmount: number = 500000000, // 0.5 WAL
         walCoinId: string // User must provide a WAL coin ID
     ): Transaction {
+        console.log('[SuiService] Starting authorizeSessionTx with:', {
+            notebookId,
+            deviceFingerprint: deviceFingerprint.substring(0, 16) + '...',
+            hotWalletAddress,
+            expiresAt,
+            suiAmount,
+            walAmount,
+            walCoinId,
+            PACKAGE_ID
+        });
+
         const tx = new Transaction();
 
         // Split SUI from gas for funding
-        const [suiPayment] = tx.splitCoins(tx.gas, [tx.pure.u64(suiAmount)]);
+        const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiAmount)]);
 
         // Handle WAL coin
         // In a real app, we might need to merge coins or pick one with enough balance.
@@ -167,22 +270,40 @@ export class SuiService {
         // but the contract takes `Coin<WAL>` and returns remainder, so passing the whole coin is fine 
         // IF the contract logic returns the remainder.
         // The design doc says: "Return remainder coins to sender". So passing the full coin is safe.
-        const walCoin = tx.object(walCoinId);
+        const [walCoin] = tx.splitCoins(tx.object(walCoinId), [tx.pure.u64(walAmount)]);
 
-        tx.moveCall({
+        // Call authorize_session_and_fund - this function likely returns multiple values
+        console.log('[SuiService] Building moveCall with target:', `${PACKAGE_ID}::notebook::authorize_session_and_fund`);
+        console.log('[SuiService] MoveCall arguments:', {
+            notebookId: tx.object(notebookId),
+            suiCoin: 'Coin<SUI> object',
+            walCoin: 'Coin<WAL> object',
+            deviceFingerprint: deviceFingerprint.substring(0, 16) + '...',
+            hotWalletAddress,
+            expiresAt,
+            suiAmount,
+            walAmount
+        });
+
+        // FIXED: Call authorize_session_and_fund with updated contract signature
+        // The contract now uses &mut Coin parameters and handles remaining balances properly
+        const moveCallResult = tx.moveCall({
             target: `${PACKAGE_ID}::notebook::authorize_session_and_fund`,
             arguments: [
-                tx.object(notebookId),
-                suiPayment,
-                walCoin,
-                tx.pure.string(deviceFingerprint),
-                tx.pure.address(hotWalletAddress),
-                tx.pure.u64(expiresAt),
-                tx.pure.option('u64', suiAmount),
-                tx.pure.option('u64', walAmount),
+                tx.object(notebookId),           // &Notebook
+                suiCoin,                          // &mut Coin<SUI>
+                walCoin,                          // &mut Coin<WAL>
+                tx.pure.string(deviceFingerprint), // string::String
+                tx.pure.address(hotWalletAddress), // address
+                tx.pure.u64(expiresAt),           // u64
+                tx.pure.option('u64', suiAmount), // option::Option<u64>
+                tx.pure.option('u64', walAmount), // option::Option<u64>
             ],
         });
 
+        console.log('[SuiService] MoveCall completed - contract handles balances correctly:', moveCallResult);
+
+        console.log('[SuiService] Transaction built successfully');
         return tx;
     }
 

@@ -195,22 +195,37 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 // Check for WAL coins with better error handling
                 let walCoinId: string;
                 try {
-                    const walCoins = await client.getCoins({
-                        owner: currentAccount.address,
-                        coinType: `${PACKAGE_ID}::wal::WAL`,
-                    });
+                    console.log('[SessionContext] Checking for WAL coins in wallet:', currentAccount.address);
 
-                    if (walCoins.data.length === 0) {
+                    // Validate WAL package ID is configured
+                    const walPackageId = import.meta.env.VITE_WAL_PACKAGE_ID;
+                    if (!walPackageId) {
                         throw new Error(
-                            `No WAL tokens found in your wallet.\n\n` +
-                            `To create a session, you need WAL tokens for funding the hot wallet.\n\n` +
-                            `Please visit the WAL testnet faucet:\n${WAL_FAUCET_URL}\n\n` +
-                            `After receiving tokens, refresh and try again.`
+                            `WAL package ID not configured.\n\n` +
+                            `Please set VITE_WAL_PACKAGE_ID in your environment variables.\n` +
+                            `Example: VITE_WAL_PACKAGE_ID=0x8270feb7375eee355e64fdb69c50abb6b5f9393a722883c1cf45f8e26048810a`
                         );
                     }
 
+                    console.log('[SessionContext] Using WAL package ID:', walPackageId);
+                    const walCoins = await client.getCoins({
+                        owner: currentAccount.address,
+                        coinType: `${walPackageId}::wal::WAL`,
+                    });
+
+                    console.log('[SessionContext] WAL coins found:', walCoins.data.length);
+
+                    if (walCoins.data.length === 0) {
+                        const errorMsg = `No WAL tokens found in your wallet.\n\n` +
+                            `To create a session, you need WAL tokens for funding the hot wallet.\n\n` +
+                            `Please visit the WAL testnet faucet:\n${WAL_FAUCET_URL}\n\n` +
+                            `After receiving tokens, refresh and try again.`;
+                        console.log('[SessionContext] WAL token check failed:', errorMsg);
+                        throw new Error(errorMsg);
+                    }
+
                     walCoinId = walCoins.data[0].coinObjectId;
-                    console.log('[SessionContext] Using WAL coin:', walCoinId);
+                    console.log('[SessionContext] Using WAL coin:', walCoinId, 'with balance:', walCoins.data[0].balance);
 
                 } catch (walError: any) {
                     // Enhance error message
@@ -227,19 +242,42 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 // Calculate expiration (24 hours from now)
                 expiresAt = Date.now() + 24 * 60 * 60 * 1000;
 
-                // Build transaction
-                const tx = suiService.authorizeSessionTx(
-                    notebookId,
-                    fingerprint,
-                    hotWallet,
-                    expiresAt,
-                    100000000, // 0.1 SUI
-                    500000000, // 0.5 WAL
-                    walCoinId
-                );
+                try {
+                    // Build transaction
+                    console.log('[SessionContext] Building transaction with params:', {
+                        notebookId,
+                        fingerprint: fingerprint.substring(0, 16) + '...',
+                        hotWallet,
+                        expiresAt,
+                        suiAmount: 100000000,
+                        walAmount: 500000000,
+                        walCoinId
+                    });
 
-                console.log('[SessionContext] Submitting SessionCap creation transaction...');
-                await signAndExecuteTransaction({ transaction: tx });
+                    let tx;
+                    try {
+                        tx = suiService.authorizeSessionTx(
+                            notebookId,
+                            fingerprint,
+                            hotWallet,
+                            expiresAt,
+                            100000000, // 0.1 SUI
+                            500000000, // 0.5 WAL
+                            walCoinId
+                        );
+                        console.log('[SessionContext] SessionCap transaction built successfully:', tx);
+                    } catch (buildError: any) {
+                        console.error('[SessionContext] Failed to build transaction:', buildError);
+                        throw new Error(`Failed to build transaction: ${buildError.message || buildError}`);
+                    }
+                    console.log('[SessionContext] Submitting SessionCap creation transaction...');
+
+                    const result = await signAndExecuteTransaction({ transaction: tx });
+                    console.log('[SessionContext] SessionCap transaction submitted successfully:', result);
+                } catch (txError: any) {
+                    console.error('[SessionContext] SessionCap transaction failed:', txError);
+                    throw new Error(`Transaction failed: ${txError.message || txError}`);
+                }
 
                 // 6. Wait for SessionCap with retry logic (replaces fixed delay)
                 console.log('[SessionContext] Waiting for SessionCap to appear on-chain...');
@@ -293,6 +331,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
             );
 
             console.log('[SessionContext] Session authorized successfully');
+            setIsLoading(false); // Ensure loading is reset on success
 
         } catch (error: any) {
             console.error('[SessionContext] Session authorization failed:', error);

@@ -860,10 +860,11 @@ module inkblob::notebook {
     
     /// Authorize device-specific hot wallet with automatic funding
     /// SECURITY: Properly handles coin objects and validates balances before transfer
+    /// Returns remaining coin balances to the caller
     public entry fun authorize_session_and_fund(
         notebook: &Notebook,
-        mut sui_coin: &mut Coin<SUI>,
-        mut wal_coin: &mut Coin<WAL>,
+        sui_coin: &mut Coin<SUI>,
+        wal_coin: &mut Coin<WAL>,
         device_fingerprint: string::String,
         hot_wallet_address: address,
         expires_at: u64,
@@ -915,14 +916,18 @@ module inkblob::notebook {
         };
         let session_cap_id_value = object::uid_to_inner(&session_cap.id);
 
-        // SECURITY FIX: Use coin::split for partial transfers
-        // Split the exact amounts needed for funding
+        // SECURITY FIX: Extract payments using coin::split
+        // The remaining balances in sui_coin and wal_coin stay with the caller
         let sui_payment = coin::split(sui_coin, sui_to_transfer, ctx);
         let wal_payment = coin::split(wal_coin, wal_to_transfer, ctx);
 
         // Transfer payments to hot wallet address
         transfer::public_transfer(sui_payment, hot_wallet_address);
         transfer::public_transfer(wal_payment, hot_wallet_address);
+
+        // SECURITY FIX: The remaining coin balances (sui_coin and wal_coin)
+        // automatically stay with the caller since we used &mut parameters
+        // and only split out the amounts we needed.
 
         // Transfer SessionCap to hot wallet
         transfer::transfer(session_cap, hot_wallet_address);

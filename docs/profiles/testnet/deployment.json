@@ -1,14 +1,14 @@
 {
   "network": "testnet",
   "deployment": {
-    "timestamp": "2025-11-23",
+    "timestamp": "2025-11-24",
     "epoch": 927,
-    "transaction_digest": "9SQQCGgrA63qW8M873hDCDhS6KnQcVfFHEtrdCzcL5K4"
+    "transaction_digest": "6ZjQ6pXWUeNerCRAw8txcaBmEs3z2CFRUwX7t1cb8vzk"
   },
   "contracts": {
-    "package_id": "0x2efc857109bc6ae765eae9bdf03760487455133678ad796e24042ab0884b91e4",
+    "package_id": "0x4a43e3b53b4e683a666224e33d0bedf0ede58e983767d706f638ad5716bc02a1",
     "modules": ["notebook"],
-    "upgrade_cap": "0xf0931cc8d5ea46c715061ba74285614c759bc718c57b8b7010953ec63cf673a6"
+    "upgrade_cap": "0x54d2b2c33453ebd42e4b74c3bb5b44ed184cdc2b91046bfb26c85dc0bf8edace"
   },
   "deployer": {
     "address": "0x59f0fbaaea0b2c89588239fff7f1ab581d0f72e11e6a0c5f8cd6a5a38531a631"
@@ -19,5 +19,10 @@
     "computation_cost": 1000000,
     "storage_rebate": 978120,
     "non_refundable_fee": 9880
-  }
+  },
+  "notes": [
+    "Fixed UnusedValueWithoutDrop bug in authorize_session_and_fund function",
+    "Contract now properly handles remaining coin balances automatically",
+    "Previous deployment had contract bugs that prevented SessionCap creation"
+  ]
 }

@@ -1,0 +1,14 @@
+[package]
+name = "InkBlob-notebook"
+version = "1.0.0"
+edition = "2024.beta"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "mainnet" }
+WAL = { local = "../vendor/wal" }
+
+[addresses]
+inkblob = "0x0"  # Will be updated after deployment
+
+[dev-dependencies]
+# Note: Sui Framework includes test utilities

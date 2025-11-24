@@ -174,8 +174,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return toast({ type: 'error', title, description });
   }, [toast]);
 
-  const loading = useCallback((title: string, promise?: Promise<any>) => {
-    return toast({ type: 'loading', title, promise });
+  const loading = useCallback((title: string, description?: string | Promise<any>) => {
+    // If second parameter is a Promise, treat it as a promise toast
+    // If it's a string, treat it as a description
+    if (description && typeof description !== 'string') {
+      return toast({ type: 'loading', title, promise: description });
+    } else {
+      return toast({ type: 'loading', title, description });
+    }
   }, [toast]);
 
   const info = useCallback((title: string, description?: string) => {

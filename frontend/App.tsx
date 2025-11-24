@@ -1,4 +1,4 @@
-import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { useEffect, useMemo, useState } from 'react';
 import { Editor } from './components/Editor';
 import { LandingPage } from './components/LandingPage';
@@ -34,6 +34,7 @@ function AppContent() {
   const suiService = useSuiService();
   const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession } = useSession();
   const toast = useToast();
+  const suiClient = useSuiClient();
 
   // Hooks for data fetching
   const { data: fetchedFolders } = useFolders();
@@ -436,7 +437,14 @@ function AppContent() {
       // Show progress toast
       loadingToastId = toast.loading('Saving Note', 'Encrypting content and uploading to storage...');
 
-      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey, signer, 1);
+      const result = await walrusService.uploadInkBlobContent(
+        note.content,
+        encryptionKey,
+        signer,
+        1,
+        currentAccount?.address,
+        signAndExecuteTransaction
+      );
       const blobId = result.blobId;
 
       // 2. Encrypt title

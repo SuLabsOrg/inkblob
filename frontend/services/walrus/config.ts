@@ -27,6 +27,8 @@ export const WALRUS_CONFIG = {
  * Uses SuiJsonRpcClient with walrus() extension as per SDK v0.8.4 requirements
  */
 export function createWalrusClient(signer?: any) {
+    // Create SuiJsonRpcClient with explicit network configuration for Walrus
+    // Walrus SDK requires specific network format that differs from dapp-kit client
     const baseClient = new SuiJsonRpcClient({
         url: getFullnodeUrl('testnet'),
         network: 'testnet',

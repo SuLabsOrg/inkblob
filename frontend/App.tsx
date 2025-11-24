@@ -196,12 +196,13 @@ function AppContent() {
 
       // Track fresh session auth result (if we just authorized)
       let sessionAuthResult = null;
+      let userConfirmed = false; // Track user's choice for debugging
 
       // Check session status and prompt for authorization if needed (same as handleSaveNote)
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
 
-        const userConfirmed = await toast.confirm({
+        userConfirmed = await toast.confirm({
           title: 'Enable Frictionless Note Saving?',
           description: 'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\nYou will need to sign twice now, but future saves will be automatic.',
           confirmLabel: 'Enable',
@@ -234,7 +235,7 @@ function AppContent() {
             }
 
             // Continue with main wallet mode (fallback)
-            console.log('[App] Falling back to main wallet signing mode');
+            console.log('[App] Session authorization failed, falling back to main wallet signing mode');
           }
 
           // Store the session auth result for use below
@@ -243,7 +244,7 @@ function AppContent() {
             console.log('[App] Using fresh session auth result for note creation');
           }
         } else {
-          console.log('[App] User declined session authorization, using main wallet');
+          console.log('[App] User declined session authorization prompt, using main wallet');
         }
       }
 
@@ -261,12 +262,29 @@ function AppContent() {
       const activeSessionCap = sessionAuthResult?.sessionCap || sessionCap;
       const activeKeypair = sessionAuthResult?.ephemeralKeypair || ephemeralKeypair;
 
+      // Determine why we're not using session (for debugging)
+      let noSessionReason = null;
+      if (!useSession) {
+        if (!sessionAuthResult && !userConfirmed) {
+          noSessionReason = 'User declined authorization prompt';
+        } else if (!sessionAuthResult && userConfirmed) {
+          noSessionReason = 'Authorization failed after user confirmation';
+        } else if (!isSessionValid) {
+          noSessionReason = 'No valid existing session';
+        } else if (!activeSessionCap) {
+          noSessionReason = 'No session capability available';
+        } else if (!activeKeypair) {
+          noSessionReason = 'No ephemeral keypair available';
+        }
+      }
+
       console.log('[App] Session state check:', {
         hasSessionAuthResult: !!sessionAuthResult,
         isSessionValid,
         hasSessionCap: !!activeSessionCap,
         hasEphemeralKeypair: !!activeKeypair,
-        useSession: !!useSession
+        useSession: !!useSession,
+        noSessionReason
       });
 
       if (useSession && activeSessionCap && activeKeypair) {
@@ -280,7 +298,7 @@ function AppContent() {
         );
         await suiService.executeWithSession(tx, activeKeypair);
       } else {
-        console.log('[App] Creating note with main wallet signing');
+        console.log(`[App] Creating note with main wallet signing${noSessionReason ? ` (${noSessionReason})` : ''}`);
         const tx = suiService.createNoteTx(
           notebook.data.objectId,
           encryptedTitle,
@@ -356,12 +374,13 @@ function AppContent() {
     try {
       // Track fresh session auth result (if we just authorized)
       let sessionAuthResult = null;
+      let userConfirmed = false; // Track user's choice for debugging
 
       // Check session status and prompt for authorization if needed
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
 
-        const userConfirmed = await toast.confirm({
+        userConfirmed = await toast.confirm({
           title: 'Enable Frictionless Note Saving?',
           description: 'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\nYou will need to sign twice now, but future saves will be automatic.',
           confirmLabel: 'Enable',
@@ -394,10 +413,10 @@ function AppContent() {
             }
 
             // Continue with main wallet mode (fallback)
-            console.log('[App] Falling back to main wallet signing mode');
+            console.log('[App] Session authorization failed, falling back to main wallet signing mode');
           }
         } else {
-          console.log('[App] User declined session authorization, using main wallet');
+          console.log('[App] User declined session authorization prompt, using main wallet');
         }
       }
 
@@ -436,12 +455,29 @@ function AppContent() {
       const activeSessionCap = sessionAuthResult?.sessionCap || sessionCap;
       const activeKeypair = sessionAuthResult?.ephemeralKeypair || ephemeralKeypair;
 
+      // Determine why we're not using session (for debugging)
+      let noSessionReason = null;
+      if (!useSession) {
+        if (!sessionAuthResult && !userConfirmed) {
+          noSessionReason = 'User declined authorization prompt';
+        } else if (!sessionAuthResult && userConfirmed) {
+          noSessionReason = 'Authorization failed after user confirmation';
+        } else if (!isSessionValid) {
+          noSessionReason = 'No valid existing session';
+        } else if (!activeSessionCap) {
+          noSessionReason = 'No session capability available';
+        } else if (!activeKeypair) {
+          noSessionReason = 'No ephemeral keypair available';
+        }
+      }
+
       console.log('[App] Session state check:', {
         hasSessionAuthResult: !!sessionAuthResult,
         isSessionValid,
         hasSessionCap: !!activeSessionCap,
         hasEphemeralKeypair: !!activeKeypair,
-        useSession: !!useSession
+        useSession: !!useSession,
+        noSessionReason
       });
 
       // Update loading toast with blockchain progress
@@ -474,7 +510,7 @@ function AppContent() {
 
         await suiService.executeWithSession(tx, activeKeypair);
       } else {
-        console.log('[App] Updating note with main wallet signing');
+        console.log(`[App] Updating note with main wallet signing${noSessionReason ? ` (${noSessionReason})` : ''}`);
         const tx = suiService.updateNoteTx(
           notebook.data.objectId,
           id,

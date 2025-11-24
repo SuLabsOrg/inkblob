@@ -397,7 +397,7 @@ const ConfirmDialogItem: React.FC<{ dialog: ConfirmDialog }> = ({ dialog }) => {
           </button>
           <button
             onClick={handleConfirm}
-            className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600 rounded-lg transition-colors shadow-sm border border-violet-700/20 dark:border-violet-400/20"
           >
             {dialog.confirmLabel || 'Confirm'}
           </button>

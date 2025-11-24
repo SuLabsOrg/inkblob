@@ -15,8 +15,19 @@ export interface Toast {
   onReject?: (error: any) => void;
 }
 
+export interface ConfirmDialog {
+  id: string;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void | Promise<void>;
+  onCancel?: () => void;
+}
+
 interface ToastContextValue {
   toasts: Toast[];
+  confirmDialogs: ConfirmDialog[];
   toast: (options: Omit<Toast, 'id'>) => string;
   success: (title: string, description?: string) => string;
   error: (title: string, description?: string) => string;
@@ -24,6 +35,7 @@ interface ToastContextValue {
   info: (title: string, description?: string) => string;
   dismiss: (id: string) => void;
   clear: () => void;
+  confirm: (options: Omit<ConfirmDialog, 'id'>) => Promise<boolean>;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -38,8 +50,10 @@ export const useToast = () => {
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [confirmDialogs, setConfirmDialogs] = useState<ConfirmDialog[]>([]);
   const timeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const promiseTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const confirmResolversRef = useRef<Map<string, (value: boolean) => void>>(new Map());
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -168,8 +182,43 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return toast({ type: 'info', title, description });
   }, [toast]);
 
+  const removeConfirmDialog = useCallback((id: string) => {
+    setConfirmDialogs(prev => prev.filter(dialog => dialog.id !== id));
+    confirmResolversRef.current.delete(id);
+  }, []);
+
+  const confirm = useCallback((options: Omit<ConfirmDialog, 'id'>): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const id = `confirm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      const confirmDialog: ConfirmDialog = {
+        ...options,
+        id,
+        onConfirm: async () => {
+          try {
+            await options.onConfirm();
+            resolve(true);
+          } catch (error) {
+            resolve(false);
+          } finally {
+            removeConfirmDialog(id);
+          }
+        },
+        onCancel: () => {
+          options.onCancel?.();
+          resolve(false);
+          removeConfirmDialog(id);
+        }
+      };
+
+      confirmResolversRef.current.set(id, resolve);
+      setConfirmDialogs(prev => [...prev, confirmDialog]);
+    });
+  }, [removeConfirmDialog]);
+
   const value: ToastContextValue = {
     toasts,
+    confirmDialogs,
     toast,
     success,
     error,
@@ -177,12 +226,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     info,
     dismiss,
     clear,
+    confirm,
   };
 
   return (
     <ToastContext.Provider value={value}>
       {children}
       <ToastContainer />
+      <ConfirmDialogContainer />
     </ToastContext.Provider>
   );
 };
@@ -294,6 +345,63 @@ const ToastItem: React.FC<{ toast: Toast }> = ({ toast }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
+      </div>
+    </div>
+  );
+};
+
+// Confirm Dialog Container Component
+const ConfirmDialogContainer: React.FC = () => {
+  const { confirmDialogs } = useToast();
+
+  if (confirmDialogs.length === 0) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto" />
+      {confirmDialogs.map((dialog) => (
+        <ConfirmDialogItem key={dialog.id} dialog={dialog} />
+      ))}
+    </div>
+  );
+};
+
+// Individual Confirm Dialog Component
+const ConfirmDialogItem: React.FC<{ dialog: ConfirmDialog }> = ({ dialog }) => {
+  const handleConfirm = async () => {
+    await dialog.onConfirm();
+  };
+
+  const handleCancel = () => {
+    dialog.onCancel?.();
+  };
+
+  return (
+    <div className="relative glass border rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 backdrop-blur-md animate-in zoom-in-95 fade-in duration-200">
+      <div className="flex flex-col space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold text-text">
+            {dialog.title}
+          </h3>
+          <p className="text-sm text-text-muted mt-2 whitespace-pre-line">
+            {dialog.description}
+          </p>
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={handleCancel}
+            className="px-4 py-2 text-sm font-medium text-text-muted hover:text-text transition-colors"
+          >
+            {dialog.cancelLabel || 'Cancel'}
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
+          >
+            {dialog.confirmLabel || 'Confirm'}
+          </button>
+        </div>
       </div>
     </div>
   );

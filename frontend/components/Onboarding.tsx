@@ -4,6 +4,8 @@ import { useEncryption } from '../context/EncryptionContext';
 import { useSuiService } from '../hooks/useSuiService';
 import { KEY_DERIVATION_MESSAGE } from '../crypto/keyDerivation';
 import { Loader2, Lock, Plus } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
+import { sanitizeWeb3Error } from '../utils/toastUtils';
 
 interface OnboardingProps {
     mode: 'unlock' | 'initialize';
@@ -16,6 +18,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
     const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
     const suiService = useSuiService();
     const currentAccount = useCurrentAccount();
+    const toast = useToast();
     const [isLoading, setIsLoading] = useState(false);
 
     const handleUnlock = async () => {
@@ -37,10 +40,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
             await deriveKey(signature, currentAccount.address);
 
             console.log('[Onboarding] Unlock successful, calling onComplete...');
+            toast.success('Notebook Unlocked', 'Your encryption key has been derived successfully!');
             onComplete?.();
         } catch (error) {
             console.error('[Onboarding] Unlock failed:', error);
-            alert('Failed to unlock notebook. Please try again.');
+            const errorInfo = sanitizeWeb3Error(error);
+            toast.error('Unlock Failed', 'Could not unlock notebook. ' + errorInfo.description + ' Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -69,10 +74,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
             });
 
             console.log('[Onboarding] Notebook creation successful, calling onComplete...');
+            toast.success('Notebook Created', `Your notebook has been created successfully!`);
             onComplete?.();
         } catch (error) {
             console.error('[Onboarding] Initialization failed:', error);
-            alert('Failed to create notebook. Please try again.');
+            const errorInfo = sanitizeWeb3Error(error);
+            toast.error('Creation Failed', 'Could not create notebook. ' + errorInfo.description + ' Please try again.');
         } finally {
             setIsLoading(false);
         }

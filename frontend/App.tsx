@@ -10,6 +10,7 @@ import { EncryptionProvider, useEncryption } from './context/EncryptionContext';
 import { SessionProvider, useSession } from './context/SessionContext';
 import { SyncProvider } from './context/SyncContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider, useToast } from './context/ToastContext';
 import { encryptText } from './crypto/encryption';
 import { useFolders } from './hooks/useFolders';
 import { useNotebook } from './hooks/useNotebook';
@@ -17,6 +18,7 @@ import { useNotes } from './hooks/useNotes';
 import { useSuiService } from './hooks/useSuiService';
 import * as walrusService from './services/walrus';
 import { Folder, Note } from './types';
+import { ToastTemplates, sanitizeWeb3Error } from './utils/toastUtils';
 
 // Mock Data (Fallback)
 const INITIAL_FOLDERS: Folder[] = [
@@ -31,6 +33,7 @@ function AppContent() {
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const suiService = useSuiService();
   const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession } = useSession();
+  const toast = useToast();
 
   // Hooks for data fetching
   const { data: fetchedFolders } = useFolders();
@@ -123,11 +126,8 @@ function AppContent() {
         setInitializationError(errorMessage);
 
         // Show user-friendly error
-        alert(
-          'Failed to initialize your notebook on Sui blockchain.\n\n' +
-          'Error: ' + errorMessage + '\n\n' +
-          'Please try refreshing the page or check your wallet balance.'
-        );
+        const errorInfo = sanitizeWeb3Error(error);
+        toast.error(errorInfo.title, errorInfo.description + '\n\nPlease try refreshing the page or check your wallet balance.');
       } finally {
         setIsInitializingNotebook(false);
       }
@@ -201,11 +201,12 @@ function AppContent() {
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
 
-        const userConfirmed = window.confirm(
-          'Enable frictionless note saving?\n\n' +
-          'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\n' +
-          'You will need to sign twice now, but future saves will be automatic.'
-        );
+        const userConfirmed = await toast.confirm({
+          title: 'Enable Frictionless Note Saving?',
+          description: 'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\nYou will need to sign twice now, but future saves will be automatic.',
+          confirmLabel: 'Enable',
+          cancelLabel: 'Not Now'
+        });
 
         if (userConfirmed) {
           try {
@@ -217,19 +218,18 @@ function AppContent() {
 
             // Special handling for WAL token errors
             if (authError?.message?.includes('WAL')) {
-              alert(
-                'Session authorization requires WAL tokens.\n\n' +
-                'You can get WAL tokens from the testnet faucet, but for now we\'ll continue creating notes with regular wallet signing.\n\n' +
-                'Note: Each save will require a signature.'
+              toast.info(
+                'Session authorization requires WAL tokens',
+                'You can get WAL tokens from the testnet faucet. For now, each save will require a signature.'
               );
             } else if (authError?.message?.includes('User rejected')) {
               console.log('[App] User rejected session authorization signature');
-              // Silent - user chose not to sign
+              toast.info('Session Cancelled', 'You chose not to authorize session. Continuing with wallet signing.');
             } else {
-              alert(
-                'Session authorization failed.\n\n' +
-                'Continuing with regular wallet signing instead.\n\n' +
-                'Error: ' + (authError?.message || 'Unknown error')
+              const errorInfo = sanitizeWeb3Error(authError);
+              toast.error(
+                errorInfo.title,
+                'Continuing with regular wallet signing instead. ' + errorInfo.description
               );
             }
 
@@ -290,11 +290,12 @@ function AppContent() {
         await signAndExecuteTransaction({ transaction: tx });
       }
 
-      console.log('Note created successfully!');
+      toast.success('Note Created', 'Your note has been created successfully!');
       // SyncContext will handle invalidation
     } catch (error) {
       console.error('Failed to create note:', error);
-      alert('Failed to create note');
+      const errorInfo = sanitizeWeb3Error(error);
+      toast.error(errorInfo.title, 'Note could not be created. ' + errorInfo.description);
       // Revert optimistic update
       setNotes(prev => prev.filter(n => n.id !== newNote.id));
       if (selecteInkBlobId === newNote.id) setSelecteInkBlobId(null);
@@ -329,9 +330,11 @@ function AppContent() {
       const encryptedName = await encryptText(name, encryptionKey);
       const tx = suiService.createFolderTx(notebook.data.objectId, encryptedName, null);
       await signAndExecuteTransaction({ transaction: tx });
+      toast.success('Folder Created', `Folder "${name}" has been created successfully!`);
     } catch (error) {
       console.error('Failed to create folder:', error);
-      alert('Failed to create folder');
+      const errorInfo = sanitizeWeb3Error(error);
+      toast.error(errorInfo.title, 'Folder could not be created. ' + errorInfo.description);
       // Revert optimistic update
       setFolders(prev => prev.filter(f => f.id !== newFolder.id));
     }
@@ -348,6 +351,8 @@ function AppContent() {
     const note = notes.find(n => n.id === id);
     if (!note) return;
 
+    let loadingToastId: string | null = null;
+
     try {
       // Track fresh session auth result (if we just authorized)
       let sessionAuthResult = null;
@@ -356,11 +361,12 @@ function AppContent() {
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
 
-        const userConfirmed = window.confirm(
-          'Enable frictionless note saving?\n\n' +
-          'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\n' +
-          'You will need to sign twice now, but future saves will be automatic.'
-        );
+        const userConfirmed = await toast.confirm({
+          title: 'Enable Frictionless Note Saving?',
+          description: 'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\nYou will need to sign twice now, but future saves will be automatic.',
+          confirmLabel: 'Enable',
+          cancelLabel: 'Not Now'
+        });
 
         if (userConfirmed) {
           try {
@@ -372,19 +378,18 @@ function AppContent() {
 
             // Special handling for WAL token errors
             if (authError?.message?.includes('WAL')) {
-              alert(
-                'Session authorization requires WAL tokens.\n\n' +
-                'You can get WAL tokens from the testnet faucet, but for now we\'ll continue saving with regular wallet signing.\n\n' +
-                'Note: Each save will require a signature.'
+              toast.info(
+                'Session authorization requires WAL tokens',
+                'You can get WAL tokens from the testnet faucet. For now, each save will require a signature.'
               );
             } else if (authError?.message?.includes('User rejected')) {
               console.log('[App] User rejected session authorization signature');
-              // Silent - user chose not to sign
+              toast.info('Session Cancelled', 'You chose not to authorize session. Continuing with wallet signing.');
             } else {
-              alert(
-                'Session authorization failed.\n\n' +
-                'Continuing with regular wallet signing instead.\n\n' +
-                'Error: ' + (authError?.message || 'Unknown error')
+              const errorInfo = sanitizeWeb3Error(authError);
+              toast.error(
+                errorInfo.title,
+                'Continuing with regular wallet signing instead. ' + errorInfo.description
               );
             }
 
@@ -408,6 +413,9 @@ function AppContent() {
         hasFreshAuth: !!sessionAuthResult,
         signerDefined: !!signer
       });
+
+      // Show progress toast
+      loadingToastId = toast.loading('Saving Note', 'Encrypting content and uploading to storage...');
 
       const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey, signer, 1);
       const blobId = result.blobId;
@@ -434,6 +442,14 @@ function AppContent() {
         hasSessionCap: !!activeSessionCap,
         hasEphemeralKeypair: !!activeKeypair,
         useSession: !!useSession
+      });
+
+      // Update loading toast with blockchain progress
+      toast.toast({
+        id: loadingToastId,
+        type: 'loading',
+        title: 'Saving Note',
+        description: 'Updating blockchain with your changes...'
       });
 
       if (useSession && activeSessionCap && activeKeypair) {
@@ -469,11 +485,15 @@ function AppContent() {
         await signAndExecuteTransaction({ transaction: tx });
       }
 
-      console.log('Note saved successfully!');
+      // Dismiss loading toast and show success
+      if (loadingToastId) toast.dismiss(loadingToastId);
+      toast.success('Note Saved', 'Your changes have been saved successfully!');
 
     } catch (error) {
       console.error('Failed to save note:', error);
-      alert('Failed to save note');
+      if (loadingToastId) toast.dismiss(loadingToastId);
+      const errorInfo = sanitizeWeb3Error(error);
+      toast.error(errorInfo.title, 'Note could not be saved. ' + errorInfo.description);
     }
   };
 
@@ -495,9 +515,11 @@ function AppContent() {
     try {
       const tx = suiService.deleteNoteTx(notebook.data.objectId, id);
       await signAndExecuteTransaction({ transaction: tx });
+      toast.success('Note Deleted', 'The note has been permanently deleted.');
     } catch (error) {
       console.error('Failed to delete note:', error);
-      alert('Failed to delete note');
+      const errorInfo = sanitizeWeb3Error(error);
+      toast.error(errorInfo.title, 'Note could not be deleted. ' + errorInfo.description);
     }
   };
 
@@ -691,9 +713,11 @@ export default function App() {
     <ThemeProvider>
       <EncryptionProvider>
         <SessionProvider>
-          <SyncProvider>
-            <AppContent />
-          </SyncProvider>
+          <ToastProvider>
+            <SyncProvider>
+              <AppContent />
+            </SyncProvider>
+          </ToastProvider>
         </SessionProvider>
       </EncryptionProvider>
     </ThemeProvider>

@@ -1,5 +1,5 @@
-import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { useEffect, useMemo, useState } from 'react';
+import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from './components/Editor';
 import { LandingPage } from './components/LandingPage';
 import { Modal } from './components/Modal';
@@ -28,12 +28,13 @@ const INITIAL_FOLDERS: Folder[] = [
 
 function AppContent() {
   const currentAccount = useCurrentAccount();
-  const { encryptionKey } = useEncryption();
+  const { encryptionKey, lastSignature, lastUserAddress } = useEncryption();
   const { data: notebook, isLoading: isNotebookLoading, refetch: refetchNotebook } = useNotebook();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const suiService = useSuiService();
-  const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession } = useSession();
+  const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession, authorizeSessionWithSignature } = useSession();
   const toast = useToast();
+  const suiClient = useSuiClient();
 
   // Hooks for data fetching
   const { data: fetchedFolders } = useFolders();
@@ -55,6 +56,12 @@ function AppContent() {
   // Notebook initialization state
   const [isInitializingNotebook, setIsInitializingNotebook] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
+
+  // Ref to persist loading toast ID across re-renders
+  const loadingToastIdRef = useRef<string | null>(null);
+
+  // Ref to prevent duplicate save operations
+  const isSavingRef = useRef<Set<string>>(new Set());
 
   // Effect to update state when hooks return data
   useEffect(() => {
@@ -212,8 +219,17 @@ function AppContent() {
         if (userConfirmed) {
           try {
             console.log('[App] User confirmed, authorizing session...');
-            sessionAuthResult = await authorizeSession(notebook.data.objectId);
-            console.log('[App] Session authorized successfully:', sessionAuthResult);
+
+            // OPTIMIZATION: Try to reuse existing signature from unlock
+            if (lastSignature && lastUserAddress === currentAccount?.address) {
+              console.log('[App] Using existing signature from unlock for session authorization...');
+              sessionAuthResult = await authorizeSessionWithSignature(notebook.data.objectId, lastSignature, lastUserAddress);
+              console.log('[App] Session authorized with existing signature:', sessionAuthResult);
+            } else {
+              console.log('[App] No valid existing signature, requesting new signature...');
+              sessionAuthResult = await authorizeSession(notebook.data.objectId);
+              console.log('[App] Session authorized successfully:', sessionAuthResult);
+            }
           } catch (authError: any) {
             console.error('[App] Session authorization failed:', authError);
 
@@ -364,12 +380,22 @@ function AppContent() {
   };
 
   const handleSaveNote = async (id: string) => {
+    console.log('[App] handleSaveNote called with id:', id);
+    console.log('[App] handleSaveNote timestamp:', Date.now());
+
+    // Prevent duplicate save operations
+    if (isSavingRef.current.has(id)) {
+      console.log('[App] Already saving note:', id, ' - skipping duplicate call');
+      return;
+    }
+
     if (!notebook?.data?.objectId || !encryptionKey) return;
 
     const note = notes.find(n => n.id === id);
     if (!note) return;
 
-    let loadingToastId: string | null = null;
+    // Mark as saving
+    isSavingRef.current.add(id);
 
     try {
       // Track fresh session auth result (if we just authorized)
@@ -390,8 +416,17 @@ function AppContent() {
         if (userConfirmed) {
           try {
             console.log('[App] User confirmed, authorizing session...');
-            sessionAuthResult = await authorizeSession(notebook.data.objectId);
-            console.log('[App] Session authorized successfully:', sessionAuthResult);
+
+            // OPTIMIZATION: Try to reuse existing signature from unlock
+            if (lastSignature && lastUserAddress === currentAccount?.address) {
+              console.log('[App] Using existing signature from unlock for session authorization...');
+              sessionAuthResult = await authorizeSessionWithSignature(notebook.data.objectId, lastSignature, lastUserAddress);
+              console.log('[App] Session authorized with existing signature:', sessionAuthResult);
+            } else {
+              console.log('[App] No valid existing signature, requesting new signature...');
+              sessionAuthResult = await authorizeSession(notebook.data.objectId);
+              console.log('[App] Session authorized successfully:', sessionAuthResult);
+            }
           } catch (authError: any) {
             console.error('[App] Session authorization failed:', authError);
 
@@ -434,9 +469,17 @@ function AppContent() {
       });
 
       // Show progress toast
-      loadingToastId = toast.loading('Saving Note', 'Encrypting content and uploading to storage...');
+      loadingToastIdRef.current = toast.loading('Saving Note', 'Encrypting content and uploading to storage...');
+      console.log('[App] Toast created with ID:', loadingToastIdRef.current);
 
-      const result = await walrusService.uploadInkBlobContent(note.content, encryptionKey, signer, 1);
+      const result = await walrusService.uploadInkBlobContent(
+        note.content,
+        encryptionKey,
+        signer,
+        1,
+        currentAccount?.address,
+        signAndExecuteTransaction
+      );
       const blobId = result.blobId;
 
       // 2. Encrypt title
@@ -480,13 +523,9 @@ function AppContent() {
         noSessionReason
       });
 
-      // Update loading toast with blockchain progress
-      toast.toast({
-        id: loadingToastId,
-        type: 'loading',
-        title: 'Saving Note',
-        description: 'Updating blockchain with your changes...'
-      });
+      // Note: We don't update the loading toast to avoid creating a second toast
+      // The original loading toast continues to show during blockchain operations
+      console.log('[App] Continuing with blockchain operations, existing toast ID:', loadingToastIdRef.current);
 
       if (useSession && activeSessionCap && activeKeypair) {
         console.log('[App] Updating note with session authorization', {
@@ -522,14 +561,21 @@ function AppContent() {
       }
 
       // Dismiss loading toast and show success
-      if (loadingToastId) toast.dismiss(loadingToastId);
+      console.log('[App] Dismissing toast with ID:', loadingToastIdRef.current);
+      if (loadingToastIdRef.current) toast.dismiss(loadingToastIdRef.current);
+      loadingToastIdRef.current = null; // Clear the ref
       toast.success('Note Saved', 'Your changes have been saved successfully!');
 
     } catch (error) {
       console.error('Failed to save note:', error);
-      if (loadingToastId) toast.dismiss(loadingToastId);
+      console.log('[App] Error - Dismissing toast with ID:', loadingToastIdRef.current);
+      if (loadingToastIdRef.current) toast.dismiss(loadingToastIdRef.current);
+      loadingToastIdRef.current = null; // Clear the ref
       const errorInfo = sanitizeWeb3Error(error);
       toast.error(errorInfo.title, 'Note could not be saved. ' + errorInfo.description);
+    } finally {
+      // Always clear the saving flag
+      isSavingRef.current.delete(id);
     }
   };
 

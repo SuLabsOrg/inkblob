@@ -1,5 +1,5 @@
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { getFullnodeUrl } from '@mysten/sui/client';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { walrus } from '@mysten/walrus';
 // Import WASM URL for Vite bundler
 import walrusWasmUrl from '@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url';
@@ -20,6 +20,9 @@ export const WALRUS_CONFIG = {
 
     // Max blob size (100 MB)
     maxBlobSize: 100 * 1024 * 1024,
+
+    // Aggregator download timeout (milliseconds)
+    aggregatorTimeout: parseInt(import.meta.env.VITE_WALRUS_AGGREGATOR_TIMEOUT || '10000'),
 };
 
 /**
@@ -27,6 +30,8 @@ export const WALRUS_CONFIG = {
  * Uses SuiJsonRpcClient with walrus() extension as per SDK v0.8.4 requirements
  */
 export function createWalrusClient(signer?: any) {
+    // Create SuiJsonRpcClient with explicit network configuration for Walrus
+    // Walrus SDK requires specific network format that differs from dapp-kit client
     const baseClient = new SuiJsonRpcClient({
         url: getFullnodeUrl('testnet'),
         network: 'testnet',
@@ -44,7 +49,7 @@ export function createWalrusClient(signer?: any) {
             // Configure WASM URL for Vite bundler
             // This ensures the WASM file is properly loaded in browser
             wasmUrl: walrusWasmUrl,
-
+ 
             // Configure upload relay for browser environments
             // This reduces the number of requests needed for uploads
             uploadRelay: {

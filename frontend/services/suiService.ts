@@ -245,7 +245,7 @@ export class SuiService {
         expiresAt: number,
         senderAddress: string, // Sender's wallet address to return remaining coins
         suiAmount: number = 100000000, // 0.1 SUI
-        walAmount: number = 500000000, // 0.5 WAL
+        walAmount: number = 200000000, // 0.2 WAL
         walCoinId: string // User must provide a WAL coin ID
     ): Transaction {
         console.log('[SuiService] Starting authorizeSessionTx with:', {

@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { toB64 } from '@mysten/sui/utils';
+import { KEY_DERIVATION_MESSAGE } from '../keyDerivation';
 import {
     storeHotWallet,
     retrieveHotWallet,
     clearHotWallet,
     hasValidStoredHotWallet,
     getHotWalletInfo,
-    HOT_WALLET_ENCRYPTION_MESSAGE,
 } from '../hotWalletStorage';
 
 // Mock browser globals
@@ -33,10 +33,9 @@ describe('Hot Wallet Storage (CRYPTO-4 Security Fix)', () => {
     });
 
     describe('Encryption Message', () => {
-        it('should have separate encryption message (CRYPTO-4)', () => {
-            expect(HOT_WALLET_ENCRYPTION_MESSAGE).toContain('encrypt your InkBlob session key');
-            expect(HOT_WALLET_ENCRYPTION_MESSAGE).toContain('device-specific hot wallet key');
-            expect(HOT_WALLET_ENCRYPTION_MESSAGE).toContain('NOT your main wallet');
+        it('should reuse content encryption message for optimization', () => {
+            expect(KEY_DERIVATION_MESSAGE).toContain('derive your InkBlob encryption key');
+            expect(KEY_DERIVATION_MESSAGE).toContain('encrypt and decrypt your notes');
         });
     });
 
@@ -69,7 +68,8 @@ describe('Hot Wallet Storage (CRYPTO-4 Security Fix)', () => {
             expect(data.iv).toBeTruthy();
 
             // Private key should be encrypted (not plaintext)
-            expect(data.encryptedPrivateKey).not.toBe(toB64(keypair.export().privateKey));
+            const rawPrivateKey = toB64(keypair.getSecretKey());
+            expect(data.encryptedPrivateKey).not.toBe(rawPrivateKey);
         });
 
         it('should retrieve and decrypt hot wallet', async () => {

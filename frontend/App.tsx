@@ -422,10 +422,25 @@ function AppContent() {
       };
       const contractFolderId = isValidFolderAddress(note.folderId) ? note.folderId : null;
 
-      if (sessionAuthResult) {
+      // Create transaction with session capability
+      // CRITICAL: Use sessionAuthResult if available (just authorized), otherwise fall back to context state
+      const useSession = sessionAuthResult || (isSessionValid && sessionCap && ephemeralKeypair);
+      const activeSessionCap = sessionAuthResult?.sessionCap || sessionCap;
+      const activeKeypair = sessionAuthResult?.ephemeralKeypair || ephemeralKeypair;
+
+      console.log('[App] Session state check:', {
+        hasSessionAuthResult: !!sessionAuthResult,
+        isSessionValid,
+        hasSessionCap: !!activeSessionCap,
+        hasEphemeralKeypair: !!activeKeypair,
+        useSession: !!useSession
+      });
+
+      if (useSession && activeSessionCap && activeKeypair) {
         console.log('[App] Updating note with session authorization', {
           "notebook": notebook,
           "sessionAuthResult": sessionAuthResult,
+          "activeSessionCap": activeSessionCap,
           "note": note,
           "id": id,
           "blobId": blobId,
@@ -434,14 +449,14 @@ function AppContent() {
         });
         const tx = suiService.updateNoteTxWithSession(
           notebook.data.objectId,
-          sessionAuthResult.sessionCap.objectId,
+          activeSessionCap.objectId,
           id,
           blobId,
           encryptedTitle,
           contractFolderId
         );
 
-        await suiService.executeWithSession(tx, sessionAuthResult.ephemeralKeypair);
+        await suiService.executeWithSession(tx, activeKeypair);
       } else {
         console.log('[App] Updating note with main wallet signing');
         const tx = suiService.updateNoteTx(

@@ -28,11 +28,11 @@ const INITIAL_FOLDERS: Folder[] = [
 
 function AppContent() {
   const currentAccount = useCurrentAccount();
-  const { encryptionKey } = useEncryption();
+  const { encryptionKey, lastSignature, lastUserAddress } = useEncryption();
   const { data: notebook, isLoading: isNotebookLoading, refetch: refetchNotebook } = useNotebook();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const suiService = useSuiService();
-  const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession } = useSession();
+  const { isSessionValid, sessionCap, ephemeralKeypair, authorizeSession, authorizeSessionWithSignature } = useSession();
   const toast = useToast();
   const suiClient = useSuiClient();
 
@@ -219,8 +219,17 @@ function AppContent() {
         if (userConfirmed) {
           try {
             console.log('[App] User confirmed, authorizing session...');
-            sessionAuthResult = await authorizeSession(notebook.data.objectId);
-            console.log('[App] Session authorized successfully:', sessionAuthResult);
+
+            // OPTIMIZATION: Try to reuse existing signature from unlock
+            if (lastSignature && lastUserAddress === currentAccount?.address) {
+              console.log('[App] Using existing signature from unlock for session authorization...');
+              sessionAuthResult = await authorizeSessionWithSignature(notebook.data.objectId, lastSignature, lastUserAddress);
+              console.log('[App] Session authorized with existing signature:', sessionAuthResult);
+            } else {
+              console.log('[App] No valid existing signature, requesting new signature...');
+              sessionAuthResult = await authorizeSession(notebook.data.objectId);
+              console.log('[App] Session authorized successfully:', sessionAuthResult);
+            }
           } catch (authError: any) {
             console.error('[App] Session authorization failed:', authError);
 
@@ -407,8 +416,17 @@ function AppContent() {
         if (userConfirmed) {
           try {
             console.log('[App] User confirmed, authorizing session...');
-            sessionAuthResult = await authorizeSession(notebook.data.objectId);
-            console.log('[App] Session authorized successfully:', sessionAuthResult);
+
+            // OPTIMIZATION: Try to reuse existing signature from unlock
+            if (lastSignature && lastUserAddress === currentAccount?.address) {
+              console.log('[App] Using existing signature from unlock for session authorization...');
+              sessionAuthResult = await authorizeSessionWithSignature(notebook.data.objectId, lastSignature, lastUserAddress);
+              console.log('[App] Session authorized with existing signature:', sessionAuthResult);
+            } else {
+              console.log('[App] No valid existing signature, requesting new signature...');
+              sessionAuthResult = await authorizeSession(notebook.data.objectId);
+              console.log('[App] Session authorized successfully:', sessionAuthResult);
+            }
           } catch (authError: any) {
             console.error('[App] Session authorization failed:', authError);
 

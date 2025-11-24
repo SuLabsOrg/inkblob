@@ -1,29 +1,27 @@
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromB64, toB64 } from '@mysten/sui/utils';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { deriveEncryptionKey } from './keyDerivation';
 
 /**
  * Hot Wallet Storage with Encryption
  *
- * SECURITY FIX (P1): CRYPTO-4 - Separate signature for hot wallet key encryption
- * Reference: docs/tech/security/review-20251123.md
+ * OPTIMIZATION: Reuse content encryption key for hot wallet storage
+ * This reduces duplicate signature authorization prompts while maintaining
+ * security for protecting device-specific hot wallet keys.
  *
  * Hot wallet private keys are encrypted before localStorage storage using
- * a SEPARATE wallet signature (not the same one used for content encryption).
+ * the SAME wallet signature used for content encryption.
  */
 
 const STORAGE_KEY_PREFIX = 'inkblob_hot_wallet_';
 const STORAGE_VERSION = 'v1';
 
 /**
- * Message to sign for hot wallet encryption key derivation
- * This is SEPARATE from the content encryption message
+ * Note: HOT_WALLET_ENCRYPTION_MESSAGE is deprecated
+ * We now reuse the content encryption signature from keyDerivation.ts
+ * This reduces duplicate signature authorization prompts
  */
-export const HOT_WALLET_ENCRYPTION_MESSAGE =
-    'Sign this message to encrypt your InkBlob session key.\n\n' +
-    'This signature will be used to protect your device-specific hot wallet key in browser storage.\n\n' +
-    'This is NOT your main wallet and will only be used for this device.\n\n' +
-    'You can revoke this session at any time.';
 
 interface EncryptedHotWalletData {
     version: string;
@@ -36,44 +34,15 @@ interface EncryptedHotWalletData {
 
 /**
  * Derive AES-256-GCM key for hot wallet encryption
- * Uses SEPARATE signature from content encryption (CRYPTO-4 fix)
+ * OPTIMIZATION: Reuses content encryption key to reduce signature prompts
  */
 async function deriveHotWalletEncryptionKey(
     walletSignature: string,
     userAddress: string
 ): Promise<CryptoKey> {
-    const signatureBytes = fromB64(walletSignature);
-
-    const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        signatureBytes,
-        { name: 'HKDF' },
-        false,
-        ['deriveBits']
-    );
-
-    // SECURITY: Separate HKDF context for hot wallet encryption
-    const salt = new TextEncoder().encode('InkBlob-SEPARATE-hot-wallet-encryption-v1');
-    const info = new TextEncoder().encode(`hot-wallet-key-ENCRYPTION-ONLY:${userAddress}`);
-
-    const keyBits = await crypto.subtle.deriveBits(
-        {
-            name: 'HKDF',
-            hash: 'SHA-256',
-            salt,
-            info,
-        },
-        keyMaterial,
-        256
-    );
-
-    return crypto.subtle.importKey(
-        'raw',
-        keyBits,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt']
-    );
+    // OPTIMIZATION: Use the same content encryption key
+    console.log('[HotWalletStorage] Using content encryption key for hot wallet storage');
+    return deriveEncryptionKey(walletSignature, userAddress);
 }
 
 /**

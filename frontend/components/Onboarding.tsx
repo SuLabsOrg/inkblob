@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSignPersonalMessage, useSignAndExecuteTransaction, useCurrentAccount } from '@mysten/dapp-kit';
 import { useEncryption } from '../context/EncryptionContext';
+import { useSession } from '../context/SessionContext';
 import { useSuiService } from '../hooks/useSuiService';
 import { KEY_DERIVATION_MESSAGE } from '../crypto/keyDerivation';
 import { Loader2, Lock, Plus } from 'lucide-react';
@@ -14,7 +15,7 @@ interface OnboardingProps {
 
 export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
     const { deriveKey } = useEncryption();
-    const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+      const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
     const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
     const suiService = useSuiService();
     const currentAccount = useCurrentAccount();
@@ -39,8 +40,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
             console.log('[Onboarding] Signature received, deriving encryption key...');
             await deriveKey(signature, currentAccount.address);
 
-            console.log('[Onboarding] Unlock successful, calling onComplete...');
+            console.log('[Onboarding] Unlock successful!');
             toast.success('Notebook Unlocked', 'Your encryption key has been derived successfully!');
+
+            // NOTE: Session restoration is now deferred until needed
+            // This prevents duplicate signature requests for first-time users
+
             onComplete?.();
         } catch (error) {
             console.error('[Onboarding] Unlock failed:', error);

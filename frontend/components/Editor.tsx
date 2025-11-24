@@ -120,7 +120,16 @@ export const Editor: React.FC<EditorProps> = ({
   }, [note?.blobId, isContentLoading, contentError, noteContent?.length]);
 
   const handleSave = async () => {
+    console.log('[Editor] handleSave called for note:', note?.id);
+    console.log('[Editor] handleSave timestamp:', Date.now());
+    console.log('[Editor] handleSave isSaving state:', isSaving);
+
     if (!note) return;
+    if (isSaving) {
+      console.log('[Editor] Already saving, skipping...');
+      return;
+    }
+
     setIsSaving(true);
     try {
       await onSave(note.id);

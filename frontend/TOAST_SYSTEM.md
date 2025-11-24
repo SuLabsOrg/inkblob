@@ -6,6 +6,7 @@ InkBlob features a custom-built toast notification system that provides user-fri
 
 - **Glass morphism design** - Matches the existing UI theme
 - **Multiple toast types** - Success, error, loading, and info notifications
+- **Confirmation dialogs** - Custom modal dialogs for user confirmation with async support
 - **Promise handling** - Automatic loading and completion toasts for async operations
 - **Web3 error sanitization** - User-friendly messages for blockchain operations
 - **Auto-dismissal** - Configurable duration for different toast types
@@ -41,6 +42,39 @@ toast.toast({
   action: {
     label: 'View Details',
     onClick: () => console.log('Action clicked')
+  }
+});
+```
+
+### Confirmation Dialog API
+
+```typescript
+import { useToast } from './context/ToastContext';
+
+const toast = useToast();
+
+// Basic confirmation dialog
+const userConfirmed = await toast.confirm({
+  title: 'Delete Note?',
+  description: 'This action cannot be undone. Are you sure you want to delete this note?',
+  confirmLabel: 'Delete',
+  cancelLabel: 'Cancel'
+});
+
+if (userConfirmed) {
+  // User confirmed the action
+  await deleteNote();
+}
+
+// Confirmation with async action
+const sessionEnabled = await toast.confirm({
+  title: 'Enable Frictionless Saving?',
+  description: 'Create a session key for automatic note saving. You will need to sign twice now.',
+  confirmLabel: 'Enable',
+  cancelLabel: 'Not Now',
+  onConfirm: async () => {
+    await authorizeSession();
+    console.log('Session authorized!');
   }
 });
 ```

@@ -201,11 +201,12 @@ function AppContent() {
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
 
-        const userConfirmed = window.confirm(
-          'Enable frictionless note saving?\n\n' +
-          'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\n' +
-          'You will need to sign twice now, but future saves will be automatic.'
-        );
+        const userConfirmed = await toast.confirm({
+          title: 'Enable Frictionless Note Saving?',
+          description: 'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\nYou will need to sign twice now, but future saves will be automatic.',
+          confirmLabel: 'Enable',
+          cancelLabel: 'Not Now'
+        });
 
         if (userConfirmed) {
           try {
@@ -360,11 +361,12 @@ function AppContent() {
       if (!isSessionValid) {
         console.log('[App] No valid session, prompting user for authorization...');
 
-        const userConfirmed = window.confirm(
-          'Enable frictionless note saving?\n\n' +
-          'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\n' +
-          'You will need to sign twice now, but future saves will be automatic.'
-        );
+        const userConfirmed = await toast.confirm({
+          title: 'Enable Frictionless Note Saving?',
+          description: 'This will create a session key for this device, allowing you to save notes without signing every transaction.\n\nYou will need to sign twice now, but future saves will be automatic.',
+          confirmLabel: 'Enable',
+          cancelLabel: 'Not Now'
+        });
 
         if (userConfirmed) {
           try {

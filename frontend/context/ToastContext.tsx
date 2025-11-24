@@ -21,7 +21,7 @@ export interface ConfirmDialog {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  onConfirm: () => void | Promise<void>;
+  onConfirm?: () => void | Promise<void>;
   onCancel?: () => void;
 }
 
@@ -196,7 +196,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         id,
         onConfirm: async () => {
           try {
-            await options.onConfirm();
+            // If onConfirm callback is provided, execute it
+            if (options.onConfirm) {
+              await options.onConfirm();
+            }
             resolve(true);
           } catch (error) {
             resolve(false);

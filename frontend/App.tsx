@@ -1,13 +1,16 @@
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from './components/Editor';
+import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
 import { Modal } from './components/Modal';
 import { NoteList } from './components/NoteList';
 import { Onboarding } from './components/Onboarding';
 import { Sidebar } from './components/Sidebar';
+import { SettingsModal } from './components/SettingsModal';
 import { EncryptionProvider, useEncryption } from './context/EncryptionContext';
 import { SessionProvider, useSession } from './context/SessionContext';
+import { SettingsProvider } from './context/SettingsContext';
 import { SyncProvider } from './context/SyncContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider, useToast } from './context/ToastContext';
@@ -52,6 +55,7 @@ function AppContent() {
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Notebook initialization state
   const [isInitializingNotebook, setIsInitializingNotebook] = useState(false);
@@ -687,19 +691,17 @@ function AppContent() {
         selectedFolderId={selectedFolderId}
         onSelectFolder={setSelectedFolderId}
         onCreateFolder={openCreateFolderModal}
+        onOpenSettings={() => setShowSettings(true)}
         isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="h-14 border-b flex items-center justify-between px-4 bg-card">
-          <div className="flex items-center gap-2">
-            {/* Header Content */}
-          </div>
-          <div className="flex items-center gap-4">
-            <ConnectButton />
-          </div>
-        </div>
+        <Header
+          sidebarOpen={sidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          folderName={folders.find(f => f.id === selectedFolderId)?.name}
+          onCreateNote={handleCreateNote}
+        />
 
         <div className="flex-1 flex overflow-hidden">
           <NoteList
@@ -733,6 +735,7 @@ function AppContent() {
         isOpen={isFolderModalOpen}
         onClose={() => setIsFolderModalOpen(false)}
         title="Create New Folder"
+        className="w-full max-w-md"
       >
         <div className="flex flex-col gap-4">
           <input
@@ -786,6 +789,12 @@ function AppContent() {
           </div>
         </div>
       </Modal>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
     </div>
   );
 }
@@ -795,11 +804,13 @@ export default function App() {
     <ThemeProvider>
       <EncryptionProvider>
         <SessionProvider>
-          <ToastProvider>
-            <SyncProvider>
-              <AppContent />
-            </SyncProvider>
-          </ToastProvider>
+          <SettingsProvider>
+            <ToastProvider>
+              <SyncProvider>
+                <AppContent />
+              </SyncProvider>
+            </ToastProvider>
+          </SettingsProvider>
         </SessionProvider>
       </EncryptionProvider>
     </ThemeProvider>

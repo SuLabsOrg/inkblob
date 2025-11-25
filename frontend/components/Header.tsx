@@ -1,6 +1,7 @@
-import React from 'react';
 import { ConnectButton } from '@mysten/dapp-kit';
-import { Sidebar as SidebarIcon, Edit } from 'lucide-react';
+import { Sidebar as SidebarIcon } from 'lucide-react';
+import React from 'react';
+import { SessionStatus } from './SessionStatus';
 
 interface HeaderProps {
     sidebarOpen: boolean;
@@ -24,24 +25,13 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                     <SidebarIcon size={20} />
                 </button>
-                <div className="flex items-center gap-2">
-                    <img src="/logo.png" alt="Inkblob Logo" className="w-6 h-6 object-contain" />
-                    <span className="text-sm font-semibold text-web3-text">
-                        {folderName}
-                    </span>
-                </div>
+
+                {/* Session Status - Leftmost position after sidebar toggle */}
+                <SessionStatus className="hidden md:flex" />
             </div>
 
             <div className="flex items-center gap-4">
                 <ConnectButton className="!bg-web3-primary !text-black !font-bold !rounded-full !px-6 !py-2 !text-sm hover:!bg-web3-primary/90 hover:!scale-105 transition-all shadow-[0_0_15px_rgba(167,139,250,0.5)]" />
-
-                <button
-                    onClick={onCreateNote}
-                    className="p-2 text-web3-textMuted hover:text-web3-accent transition-colors hover:bg-web3-cardHover rounded-lg"
-                    title="New Note"
-                >
-                    <Edit size={20} />
-                </button>
             </div>
         </div>
     );

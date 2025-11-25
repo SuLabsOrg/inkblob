@@ -281,7 +281,6 @@ memory-bank/
 
 # Open Spec
 openspec/
-features/
 
 # Cursor
 .cursor

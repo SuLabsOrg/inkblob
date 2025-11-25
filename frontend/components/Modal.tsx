@@ -6,9 +6,10 @@ interface ModalProps {
     onClose: () => void;
     title: string;
     children: React.ReactNode;
+    className?: string;
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, className }) => {
     const modalRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -33,7 +34,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div
                 ref={modalRef}
-                className="bg-web3-card w-full max-w-md rounded-2xl border border-web3-border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+                className={`bg-web3-card w-2/3 max-w-6xl rounded-2xl border border-web3-border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 ${className || ''}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between p-4 border-b border-web3-border/50">

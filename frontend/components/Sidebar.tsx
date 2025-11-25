@@ -1,13 +1,13 @@
+import { Archive, Folder as FolderIcon, Grid, Plus, Settings, Trash2 } from 'lucide-react';
 import React from 'react';
-import { Folder as FolderIcon, Trash2, Archive, Grid, Plus, Sun, Moon } from 'lucide-react';
 import { Folder } from '../types';
-import { useTheme } from '../context/ThemeContext';
 
 interface SidebarProps {
   folders: Folder[];
   selectedFolderId: string;
   onSelectFolder: (id: string) => void;
   onCreateFolder?: () => void;
+  onOpenSettings?: () => void;
   isOpen: boolean;
 }
 
@@ -16,9 +16,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedFolderId,
   onSelectFolder,
   onCreateFolder,
+  onOpenSettings,
   isOpen
 }) => {
-  const { theme, toggleTheme } = useTheme();
 
   if (!isOpen) return null;
 
@@ -32,8 +32,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="w-64 bg-web3-card/30 h-full border-r border-web3-border/50 flex flex-col pt-10 select-none transition-all duration-300 ease-in-out backdrop-blur-md">
-      <div className="px-4 pb-2">
+    <div className="w-64 bg-web3-card/30 h-full border-r border-web3-border/50 flex flex-col select-none transition-all duration-300 ease-in-out backdrop-blur-md">
+      {/* Logo Section */}
+      <div className="p-4 border-b border-web3-border/30 bg-web3-card/20">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <img src="/logo.png" alt="Inkblob Logo" className="w-8 h-8 object-contain drop-shadow-sm" />
+            <div className="absolute -inset-1 bg-web3-primary/20 rounded-full blur-md opacity-50"></div>
+          </div>
+          <div>
+            <span className="text-lg font-bold text-web3-text">Inkblob</span>
+            <div className="text-xs text-web3-textMuted">Secure DNotes</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 pb-2 pt-4">
         <h3 className="text-xs font-bold text-web3-textMuted uppercase tracking-wider mb-2 pl-2">Library</h3>
         <ul>
           {folders.map(folder => (
@@ -70,14 +84,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div
-          onClick={toggleTheme}
+          onClick={onOpenSettings}
           className="flex items-center text-xs text-web3-textMuted justify-between cursor-pointer hover:text-web3-primary transition-colors group p-2 rounded hover:bg-web3-cardHover"
         >
           <span className="flex items-center gap-2">
             <div className="p-1 rounded bg-web3-card border border-web3-border group-hover:border-web3-primary transition-colors">
-              {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
+              <Settings size={12} />
             </div>
-            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            Settings
           </span>
         </div>
       </div>

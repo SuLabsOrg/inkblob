@@ -6,19 +6,34 @@ export const DEFAULT_GAS_SPONSOR_CONFIG: GasSponsorSystemConfig = {
     custom: {
       type: 'custom-backend',
       enabled: true,
-      priority: 1,
+      priority: 2,
       config: {
         enabled: true,
-        priority: 1,
+        priority: 2,
         endpoint: process.env.VITE_GAS_SPONSOR_API || '',
         timeout: 8000,
         retryAttempts: 2,
         customSettings: {}
       }
+    },
+    enoki: {
+      type: 'enoki',
+      enabled: true,
+      priority: 1, // Higher priority than custom
+      config: {
+        enabled: true,
+        priority: 1,
+        endpoint: process.env.VITE_ENOKI_ENDPOINT || 'https://api.enoki.mystenlabs.com',
+        timeout: 10000,
+        retryAttempts: 3,
+        customSettings: {
+          clientId: process.env.VITE_ENOKI_CLIENT_ID || '',
+          scope: ['gas_sponsor']
+        }
+      }
     }
-    // Enoki will be added in Phase 2
   },
-  defaultProvider: 'custom',
+  defaultProvider: 'enoki', // Default to Enoki for notebook creation
   fallbackToWallet: true,
   enableCaching: true,
   cacheTimeout: 30000 // 30 seconds
@@ -45,6 +60,22 @@ export function loadGasSponsorConfig(): GasSponsorSystemConfig {
     config.providers.custom.config.customSettings = {
       ...config.providers.custom.config.customSettings,
       apiKey: process.env.VITE_GAS_SPONSOR_API_KEY
+    };
+  }
+
+  // Enoki configuration
+  if (process.env.VITE_ENOKI_ENABLED) {
+    config.providers.enoki.enabled = process.env.VITE_ENOKI_ENABLED === 'true';
+  }
+
+  if (process.env.VITE_ENOKI_ENDPOINT) {
+    config.providers.enoki.config.endpoint = process.env.VITE_ENOKI_ENDPOINT;
+  }
+
+  if (process.env.VITE_ENOKI_CLIENT_ID) {
+    config.providers.enoki.config.customSettings = {
+      ...config.providers.enoki.config.customSettings,
+      clientId: process.env.VITE_ENOKI_CLIENT_ID
     };
   }
 

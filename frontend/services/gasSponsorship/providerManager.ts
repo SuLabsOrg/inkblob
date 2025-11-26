@@ -10,9 +10,7 @@ import {
 } from './types';
 import { getCurrentGasSponsorConfig, getEnabledProviders } from './config';
 import { CustomBackendProvider } from './customBackendProvider';
-
-// EnokiProvider will be imported in Phase 2
-// import { EnokiProvider } from './enokiProvider';
+import { EnokiProvider } from './enokiProvider';
 
 export class ProviderManager {
   private providers: Map<string, GasSponsorProvider> = new Map();
@@ -36,8 +34,8 @@ export class ProviderManager {
             provider = new CustomBackendProvider();
             break;
           case 'enoki':
-            // provider = new EnokiProvider(); // Phase 2
-            throw new Error('Enoki provider not implemented yet');
+            provider = new EnokiProvider();
+            break;
           default:
             throw new Error(`Unknown provider type: ${providerConfig.type}`);
         }

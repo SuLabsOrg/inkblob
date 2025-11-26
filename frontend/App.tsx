@@ -135,11 +135,17 @@ function AppContent() {
         const notebookName = `My Notebook - ${new Date().toLocaleDateString()}`;
 
         console.log('[App] Creating notebook transaction with name:', notebookName);
-        const tx = suiService.createNotebookTx(notebookName);
 
-        console.log('[App] Signing and executing transaction...');
-        const result = await signAndExecuteTransaction({
-          transaction: tx,
+        // Use gas sponsorship for notebook creation (no wallet required if Enoki available)
+        const result = await suiService.createNotebookWithSponsorship(
+          notebookName,
+          signAndExecuteTransaction
+        );
+
+        console.log('[App] Notebook creation result:', {
+            success: !!result,
+            sponsored: result.sponsored || false,
+            route: result.route
         });
 
         console.log('[App] Notebook creation successful:', result);

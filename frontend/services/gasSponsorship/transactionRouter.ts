@@ -11,6 +11,36 @@ export class GasSponsorRouter {
   private providerManager = getProviderManager();
 
   /**
+   * Check if transaction is for notebook creation
+   */
+  private isNotebookCreation(tx: Transaction): boolean {
+    try {
+      const txData = tx.getData();
+
+      if (!txData.commands) {
+        return false;
+      }
+
+      // Check for notebook creation operations
+      for (const command of txData.commands) {
+        if (command.MoveCall && command.MoveCall.target) {
+          const target = command.MoveCall.target;
+
+          // Notebook creation specifically
+          if (target.includes('create_notebook')) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('[GasSponsorRouter] Error detecting notebook creation:', error);
+      return false;
+    }
+  }
+
+  /**
    * Determine if a transaction requires SessionCap (WAL storage fees)
    */
   private requiresSessionCap(tx: Transaction): boolean {
@@ -27,6 +57,7 @@ export class GasSponsorRouter {
           const target = command.MoveCall.target;
 
           // Operations that require WAL storage (content upload/download)
+          // Note: create_notebook is handled separately by Enoki sponsorship
           if (target.includes('create_note') || target.includes('update_note')) {
             return true;
           }
@@ -106,6 +137,29 @@ export class GasSponsorRouter {
     tx: Transaction,
     authInfo?: AuthInfo
   ): Promise<TransactionRoute> {
+    // Check if this is notebook creation - prioritize Enoki sponsorship
+    if (this.isNotebookCreation(tx)) {
+      console.log('[GasSponsorRouter] Notebook creation detected, prioritizing Enoki sponsorship');
+
+      // Try Enoki first (highest priority for notebook creation)
+      const enokiProvider = this.providerManager.getProvider('enoki');
+      if (enokiProvider && await enokiProvider.isAvailable()) {
+        return {
+          paymentMethod: 'gas-sponsor',
+          providerId: 'enoki',
+          requiresAuth: false, // Enoki uses backend auth
+          reason: 'Notebook creation sponsored by Enoki (no wallet required)'
+        };
+      }
+
+      // Enoki not available, fallback to direct wallet (not SessionCap)
+      console.log('[GasSponsorRouter] Enoki unavailable for notebook creation, using wallet');
+      return {
+        paymentMethod: 'direct-wallet',
+        reason: 'Enoki unavailable, using direct wallet payment for notebook creation'
+      };
+    }
+
     // Check if transaction requires SessionCap (WAL storage)
     if (this.requiresSessionCap(tx)) {
       console.log('[GasSponsorRouter] Transaction requires SessionCap (WAL storage)');

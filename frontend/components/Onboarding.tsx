@@ -71,11 +71,17 @@ export const Onboarding: React.FC<OnboardingProps> = ({ mode, onComplete }) => {
             const notebookName = `My Notebook - ${new Date().toLocaleDateString()}`;
 
             console.log('[Onboarding] Creating notebook transaction with name:', notebookName);
-            const tx = suiService.createNotebookTx(notebookName);
 
-            console.log('[Onboarding] Signing and executing transaction...');
-            await signAndExecuteTransaction({
-                transaction: tx,
+            // Use gas sponsorship for notebook creation (No Wallet required if Enoki available)
+            const result = await suiService.createNotebookWithSponsorship(
+                notebookName,
+                signAndExecuteTransaction
+            );
+
+            console.log('[Onboarding] Notebook creation result:', {
+                success: !!result,
+                sponsored: result?.sponsored || false,
+                route: result?.route
             });
 
             console.log('[Onboarding] Notebook creation successful, calling onComplete...');

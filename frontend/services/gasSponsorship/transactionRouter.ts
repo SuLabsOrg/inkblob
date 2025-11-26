@@ -266,6 +266,13 @@ export class GasSponsorRouter {
   }
 
   /**
+   * Check if gas sponsorship is available
+   */
+  async isGasSponsorshipAvailable(): Promise<boolean> {
+    return await this.providerManager.isGasSponsorshipAvailable();
+  }
+
+  /**
    * Get operation display name
    */
   getOperationDisplayName(operation: GasSponsoredOperation): string {
@@ -301,3 +308,6 @@ export function getGasSponsorRouter(): GasSponsorRouter {
 export function resetGasSponsorRouter(): void {
   routerInstance = null;
 }
+
+// Re-export types for convenience
+export type { TransactionRoute, AuthInfo, SponsoredTransaction } from './types';

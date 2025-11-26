@@ -23,8 +23,14 @@ export class CustomBackendProvider implements GasSponsorProvider {
     cacheExpiry: number;
   } | null = null;
 
-  async configure(config: CustomBackendConfig): Promise<void> {
-    if (!config.endpoint && !config.apiKey) {
+  async configure(config: ProviderConfig): Promise<void> {
+    // Extract API key from custom settings if available
+    const apiKey = config.customSettings?.apiKey;
+    const endpoint = config.endpoint;
+    const timeout = config.timeout || 8000;
+    const retryAttempts = config.retryAttempts || 2;
+
+    if (!endpoint && !apiKey) {
       throw createSponsorshipError(
         'PROVIDER_ERROR',
         'Custom backend provider requires either endpoint or API key configuration'
@@ -32,10 +38,10 @@ export class CustomBackendProvider implements GasSponsorProvider {
     }
 
     this.config = {
-      endpoint: config.endpoint || '',
-      apiKey: config.apiKey,
-      timeout: config.timeout || 8000,
-      retryAttempts: config.retryAttempts || 2
+      endpoint: endpoint || '',
+      apiKey: apiKey,
+      timeout: timeout,
+      retryAttempts: retryAttempts
     };
 
     console.log('[CustomBackendProvider] Configured with endpoint:', this.config.endpoint);

@@ -22,6 +22,8 @@ import { useSuiService } from './hooks/useSuiService';
 import * as walrusService from './services/walrus';
 import { Folder, Note } from './types';
 import { ToastTemplates, sanitizeWeb3Error } from './utils/toastUtils';
+import { getGasSponsorRouter } from './services/gasSponsorship/transactionRouter';
+import { getCurrentGasSponsorConfig } from './services/gasSponsorship/config';
 
 // Mock Data (Fallback)
 const INITIAL_FOLDERS: Folder[] = [
@@ -66,6 +68,31 @@ function AppContent() {
 
   // Ref to prevent duplicate save operations
   const isSavingRef = useRef<Set<string>>(new Set());
+
+  // Gas sponsorship configuration
+  const gasSponsorConfig = getCurrentGasSponsorConfig();
+  const gasSponsorRouter = getGasSponsorRouter();
+
+  // Gas sponsorship state
+  const [gasSponsorEnabled, setGasSponsorEnabled] = useState(
+    Object.values(gasSponsorConfig.providers).some(p => p.enabled)
+  );
+
+  // Check gas sponsorship availability on mount and config change
+  useEffect(() => {
+    const checkGasSponsorshipAvailability = async () => {
+      try {
+        const isAvailable = await gasSponsorRouter.isGasSponsorshipAvailable();
+        setGasSponsorEnabled(isAvailable);
+        console.log('[App] Gas sponsorship availability:', isAvailable);
+      } catch (error) {
+        console.error('[App] Error checking gas sponsorship availability:', error);
+        setGasSponsorEnabled(false);
+      }
+    };
+
+    checkGasSponsorshipAvailability();
+  }, [gasSponsorConfig]);
 
   // Effect to update state when hooks return data
   useEffect(() => {
@@ -366,8 +393,21 @@ function AppContent() {
 
     try {
       const encryptedName = await encryptText(name, encryptionKey);
-      const tx = suiService.createFolderTx(notebook.data.objectId, encryptedName, null);
-      await signAndExecuteTransaction({ transaction: tx });
+      const tx = suiService.createCreateFolderTx(notebook.data.objectId, encryptedName, null);
+
+      // Try to use gas sponsorship first
+      try {
+        const route = await suiService.getGasSponsorshipRoute(tx);
+        console.log('[App] Folder creation route:', route);
+
+        if (route.paymentMethod === 'gas-sponsor' && gasSponsorEnabled) {
+          toast.info('Gas Sponsorship Available', 'Creating folder using gas sponsorship...');
+        }
+      } catch (error) {
+        console.log('[App] Could not check gas sponsorship route, using direct wallet');
+      }
+
+      await suiService.executeWithGasSponsorship(tx, undefined, signAndExecuteTransaction);
       toast.success('Folder Created', `Folder "${name}" has been created successfully!`);
     } catch (error) {
       console.error('Failed to create folder:', error);

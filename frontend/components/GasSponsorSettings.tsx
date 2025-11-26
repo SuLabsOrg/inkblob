@@ -3,12 +3,11 @@ import { getProviderManager } from '../services/gasSponsorship/providerManager';
 import { getCurrentGasSponsorConfig } from '../services/gasSponsorship/config';
 import { ProviderStatus } from '../services/gasSponsorship/types';
 
-interface GasSponsorSettingsProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface GasSponsorSettingsContentProps {
+  // No isOpen/onClose props needed since it's embedded directly
 }
 
-export const GasSponsorSettings: React.FC<GasSponsorSettingsProps> = ({ isOpen, onClose }) => {
+export const GasSponsorSettingsContent: React.FC<GasSponsorSettingsContentProps> = () => {
   const [providerStatuses, setProviderStatuses] = useState<Map<string, ProviderStatus>>(new Map());
   const [invitationCode, setInvitationCode] = useState('');
   const [isCheckingCode, setIsCheckingCode] = useState(false);
@@ -17,21 +16,19 @@ export const GasSponsorSettings: React.FC<GasSponsorSettingsProps> = ({ isOpen, 
   const config = getCurrentGasSponsorConfig();
   const providerManager = getProviderManager();
 
-  // Check provider status when modal opens
+  // Check provider status when component mounts
   useEffect(() => {
-    if (isOpen) {
-      const checkProviderStatuses = async () => {
-        try {
-          const statuses = await providerManager.getAllProviderStatuses();
-          setProviderStatuses(statuses);
-        } catch (error) {
-          console.error('[GasSponsorSettings] Error checking provider statuses:', error);
-        }
-      };
+    const checkProviderStatuses = async () => {
+      try {
+        const statuses = await providerManager.getAllProviderStatuses();
+        setProviderStatuses(statuses);
+      } catch (error) {
+        console.error('[GasSponsorSettingsContent] Error checking provider statuses:', error);
+      }
+    };
 
-      checkProviderStatuses();
-    }
-  }, [isOpen]);
+    checkProviderStatuses();
+  }, []);
 
   const handleTestInvitationCode = async () => {
     if (!invitationCode.trim()) {
@@ -120,6 +117,143 @@ export const GasSponsorSettings: React.FC<GasSponsorSettingsProps> = ({ isOpen, 
     }
   }, []);
 
+  return (
+    <div className="space-y-6">
+      {/* Provider Status */}
+      <div>
+        <h3 className="text-lg font-medium text-web3-text mb-3">Provider Status</h3>
+        <div className="space-y-2">
+          {providerStatuses.size === 0 ? (
+            <p className="text-web3-textMuted text-sm">No gas sponsorship providers configured</p>
+          ) : (
+            Array.from(providerStatuses.entries()).map(([providerId, status]) => (
+              <div key={providerId} className="flex items-center justify-between p-3 bg-web3-card/30 rounded">
+                <div>
+                  <span className="font-medium text-web3-text capitalize">
+                    {providerId.replace('-', ' ')} Provider
+                  </span>
+                  <div className={`text-sm ${getStatusColor(status)}`}>
+                    {getStatusText(status)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  {status.lastChecked && (
+                    <div className="text-xs text-web3-textMuted">
+                      Last checked: {new Date(status.lastChecked).toLocaleTimeString()}
+                    </div>
+                  )}
+                  {status.errorCount > 0 && (
+                    <div className="text-xs text-red-600">
+                      Errors: {status.errorCount}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Eligible Operations */}
+      <div>
+        <h3 className="text-lg font-medium text-web3-text mb-3">Eligible Operations</h3>
+        <div className="bg-blue-50 p-4 rounded">
+          <p className="text-sm text-blue-800 mb-2">
+            The following operations are eligible for gas sponsorship:
+          </p>
+          <ul className="text-sm text-blue-700 space-y-1">
+            <li>• Delete notes</li>
+            <li>• Create folders</li>
+            <li>• Delete folders</li>
+            <li>• Move notes between folders</li>
+            <li>• Update note metadata (without content changes)</li>
+          </ul>
+          <p className="text-sm text-blue-800 mt-3 font-medium">
+            Note: Content creation/modification requires WAL storage fees and uses the existing SessionCap system.
+          </p>
+        </div>
+      </div>
+
+      {/* Invitation Code */}
+      <div>
+        <h3 className="text-lg font-medium text-web3-text mb-3">Invitation Code</h3>
+        <div className="space-y-3">
+          <p className="text-sm text-web3-textMuted">
+            Enter your invitation code to enable gas sponsorship for eligible transactions.
+          </p>
+
+          <div className="flex space-x-2">
+            <input
+              type="text"
+              value={invitationCode}
+              onChange={(e) => setInvitationCode(e.target.value)}
+              placeholder="Enter invitation code"
+              className="flex-1 px-3 py-2 border border-web3-border rounded focus:outline-none focus:ring-2 focus:ring-web3-primary bg-web3-card text-web3-text"
+              disabled={isCheckingCode}
+            />
+            <button
+              onClick={handleTestInvitationCode}
+              disabled={isCheckingCode}
+              className="px-4 py-2 bg-web3-muted text-web3-text rounded hover:bg-web3-cardHover disabled:bg-web3-border/50 transition-colors"
+            >
+              {isCheckingCode ? 'Checking...' : 'Validate'}
+            </button>
+          </div>
+
+          {codeMessage && (
+            <div className={`text-sm p-2 rounded ${
+              codeMessage.type === 'success' ? 'bg-green-50 text-green-700' :
+              codeMessage.type === 'error' ? 'bg-red-50 text-red-700' :
+              'bg-blue-50 text-blue-700'
+            }`}>
+              {codeMessage.text}
+            </div>
+          )}
+
+          <div className="flex space-x-2">
+            <button
+              onClick={handleSaveInvitationCode}
+              disabled={!invitationCode.trim()}
+              className="px-4 py-2 bg-web3-primary text-white rounded hover:bg-web3-primary/90 disabled:bg-web3-border/50 transition-colors"
+            >
+              Save Code
+            </button>
+            <button
+              onClick={handleClearInvitationCode}
+              className="px-4 py-2 bg-web3-muted text-web3-text rounded hover:bg-web3-cardHover transition-colors"
+            >
+              Clear Code
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Configuration Info */}
+      <div>
+        <h3 className="text-lg font-medium text-web3-text mb-3">Configuration</h3>
+        <div className="bg-web3-card/30 p-4 rounded">
+          <p className="text-sm text-web3-text mb-2">
+            <strong>Fallback to Wallet:</strong> {config.fallbackToWallet ? 'Enabled' : 'Disabled'}
+          </p>
+          <p className="text-sm text-web3-text mb-2">
+            <strong>Cache Timeout:</strong> {config.cacheTimeout / 1000}s
+          </p>
+          <p className="text-sm text-web3-text">
+            <strong>Enabled Providers:</strong> {Object.values(config.providers).filter(p => p.enabled).length}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Keep the original modal-based component for backward compatibility, but mark as deprecated
+interface GasSponsorSettingsProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const GasSponsorSettings: React.FC<GasSponsorSettingsProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
@@ -136,134 +270,7 @@ export const GasSponsorSettings: React.FC<GasSponsorSettingsProps> = ({ isOpen, 
             </svg>
           </button>
         </div>
-
-        <div className="space-y-6">
-          {/* Provider Status */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Provider Status</h3>
-            <div className="space-y-2">
-              {providerStatuses.size === 0 ? (
-                <p className="text-gray-500 text-sm">No gas sponsorship providers configured</p>
-              ) : (
-                Array.from(providerStatuses.entries()).map(([providerId, status]) => (
-                  <div key={providerId} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <div>
-                      <span className="font-medium text-gray-900 capitalize">
-                        {providerId.replace('-', ' ')} Provider
-                      </span>
-                      <div className={`text-sm ${getStatusColor(status)}`}>
-                        {getStatusText(status)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {status.lastChecked && (
-                        <div className="text-xs text-gray-500">
-                          Last checked: {new Date(status.lastChecked).toLocaleTimeString()}
-                        </div>
-                      )}
-                      {status.errorCount > 0 && (
-                        <div className="text-xs text-red-600">
-                          Errors: {status.errorCount}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Eligible Operations */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Eligible Operations</h3>
-            <div className="bg-blue-50 p-4 rounded">
-              <p className="text-sm text-blue-800 mb-2">
-                The following operations are eligible for gas sponsorship:
-              </p>
-              <ul className="text-sm text-blue-700 space-y-1">
-                <li>• Delete notes</li>
-                <li>• Create folders</li>
-                <li>• Delete folders</li>
-                <li>• Move notes between folders</li>
-                <li>• Update note metadata (without content changes)</li>
-              </ul>
-              <p className="text-sm text-blue-800 mt-3 font-medium">
-                Note: Content creation/modification requires WAL storage fees and uses the existing SessionCap system.
-              </p>
-            </div>
-          </div>
-
-          {/* Invitation Code */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Invitation Code</h3>
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Enter your invitation code to enable gas sponsorship for eligible transactions.
-              </p>
-
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={invitationCode}
-                  onChange={(e) => setInvitationCode(e.target.value)}
-                  placeholder="Enter invitation code"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={isCheckingCode}
-                />
-                <button
-                  onClick={handleTestInvitationCode}
-                  disabled={isCheckingCode}
-                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400 transition-colors"
-                >
-                  {isCheckingCode ? 'Checking...' : 'Validate'}
-                </button>
-              </div>
-
-              {codeMessage && (
-                <div className={`text-sm p-2 rounded ${
-                  codeMessage.type === 'success' ? 'bg-green-50 text-green-700' :
-                  codeMessage.type === 'error' ? 'bg-red-50 text-red-700' :
-                  'bg-blue-50 text-blue-700'
-                }`}>
-                  {codeMessage.text}
-                </div>
-              )}
-
-              <div className="flex space-x-2">
-                <button
-                  onClick={handleSaveInvitationCode}
-                  disabled={!invitationCode.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-                >
-                  Save Code
-                </button>
-                <button
-                  onClick={handleClearInvitationCode}
-                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-                >
-                  Clear Code
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Configuration Info */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Configuration</h3>
-            <div className="bg-gray-50 p-4 rounded">
-              <p className="text-sm text-gray-700 mb-2">
-                <strong>Fallback to Wallet:</strong> {config.fallbackToWallet ? 'Enabled' : 'Disabled'}
-              </p>
-              <p className="text-sm text-gray-700 mb-2">
-                <strong>Cache Timeout:</strong> {config.cacheTimeout / 1000}s
-              </p>
-              <p className="text-sm text-gray-700">
-                <strong>Enabled Providers:</strong> {Object.values(config.providers).filter(p => p.enabled).length}
-              </p>
-            </div>
-          </div>
-        </div>
-
+        <GasSponsorSettingsContent />
         <div className="mt-6 flex justify-end">
           <button
             onClick={onClose}

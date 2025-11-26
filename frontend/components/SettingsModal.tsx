@@ -4,6 +4,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useSession } from '../context/SessionContext';
 import { useTheme } from '../context/ThemeContext';
 import { Modal } from './Modal';
+import { GasSponsorSettings } from './GasSponsorSettings';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -14,9 +15,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const { showSessionStatus, toggleSessionStatus } = useSettings();
     const { theme, toggleTheme } = useTheme();
     const { isSessionValid, sessionExpiresAt, hotWalletAddress } = useSession();
-    const [activeTab, setActiveTab] = useState<'general' | 'appearance'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'gas-sponsor'>('general');
+    const [isGasSponsorModalOpen, setIsGasSponsorModalOpen] = useState(false);
 
     return (
+        <>
         <Modal
             isOpen={isOpen}
             onClose={onClose}
@@ -213,6 +216,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 </div>
                             </div>
                         )}
+
+                        {/* Gas Sponsorship Tab */}
+                        {activeTab === 'gas-sponsor' && (
+                            <div className="space-y-8">
+                                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                    <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                                        Gas Sponsorship
+                                    </h3>
+                                    <p className="text-sm text-slate-600 mb-4">
+                                        Configure gas sponsorship settings and manage your invitation codes.
+                                    </p>
+                                    <div className="flex justify-center">
+                                        <button
+                                            onClick={() => setIsGasSponsorModalOpen(true)}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                                        >
+                                            Open Gas Sponsor Settings
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -227,5 +252,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </button>
             </div>
         </Modal>
+        <GasSponsorSettings
+            isOpen={isGasSponsorModalOpen}
+            onClose={() => setIsGasSponsorModalOpen(false)}
+        />
+        </>
     );
 };

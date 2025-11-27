@@ -729,6 +729,6 @@ export class SuiService {
 }
 
 // Export gas sponsorship router and types
-export { getGasSponsorRouter, TransactionRoute, AuthInfo, SponsoredTransaction, ProviderStatus } from "./gasSponsorship/transactionRouter";
-export { createSponsorshipError } from "./gasSponsorship/types";
+export { getGasSponsorRouter, TransactionRoute, AuthInfo, SponsoredTransaction } from "./gasSponsorship/transactionRouter";
+export { ProviderStatus, createSponsorshipError } from "./gasSponsorship/types";
 

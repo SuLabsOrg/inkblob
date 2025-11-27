@@ -413,6 +413,20 @@ export class SuiService {
     }
 
     /**
+     * Create notebook with gas sponsorship support
+     * @param notebookName - Name for new notebook
+     * @param signAndExecuteTransaction - Function to sign and execute transaction if needed
+     * @returns Transaction execution result
+     */
+    async createNotebookWithSponsorship(
+        notebookName: string,
+        signAndExecuteTransaction: (params: { transaction: Transaction }) => Promise<any>
+    ): Promise<any> {
+        const tx = this.createNotebookTx(notebookName);
+        return await this.executeWithGasSponsorship(tx, undefined, signAndExecuteTransaction);
+    }
+
+    /**
      * Check if a transaction is eligible for gas sponsorship
      */
     async isEligibleForGasSponsorship(tx: Transaction): Promise<boolean> {
@@ -713,29 +727,8 @@ export class SuiService {
         return unsubscribe;
     }
 }
-}
 
-export const { getGasSponsorRouter } = require("./gasSponsorship/transactionRouter");
-export { Transaction, AuthInfo, SponsoredTransaction, ProviderStatus } from "./gasSponsorship/types");
-
-
-} // End of class definition
-
-// Export gas sponsorship router instance
+// Export gas sponsorship router and types
 export { getGasSponsorRouter, TransactionRoute, AuthInfo, SponsoredTransaction, ProviderStatus } from "./gasSponsorship/transactionRouter";
 export { createSponsorshipError } from "./gasSponsorship/types";
-
-    /**
-     * Create notebook with gas sponsorship support
-     * @param notebookName - Name for new notebook
-     * @param signAndExecuteTransaction - Function to sign and execute transaction if needed
-     * @returns Transaction execution result
-     */
-    async createNotebookWithSponsorship(
-        notebookName: string,
-        signAndExecuteTransaction: (params: { transaction: Transaction }) => Promise<any>
-    ): Promise<any> {
-        const tx = this.createNotebookTx(notebookName);
-        return await this.executeWithGasSponsorship(tx, signAndExecuteTransaction);
-    }
 

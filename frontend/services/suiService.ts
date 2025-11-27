@@ -1,5 +1,7 @@
 import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
+import { getGasSponsorRouter, TransactionRoute, AuthInfo } from './gasSponsorship/transactionRouter';
+import { createSponsorshipError } from './gasSponsorship/types';
 
 // Package ID from environment variable (deployed contract address)
 export const PACKAGE_ID = import.meta.env.VITE_SUI_PACKAGE_ID || '0x0';
@@ -342,6 +344,202 @@ export class SuiService {
             },
         });
     }
+
+    /**
+     * Execute transaction with gas sponsorship routing
+     * Determines if transaction should use SessionCap, gas sponsorship, or direct wallet
+     */
+    async executeWithGasSponsorship(
+        tx: Transaction,
+        authInfo?: AuthInfo,
+        signAndExecuteTransaction?: (params: { transaction: Transaction }) => Promise<any>
+    ): Promise<any> {
+        const router = getGasSponsorRouter();
+
+        try {
+            // Route the transaction to determine payment method
+            const result = await router.sponsorTransaction(tx, authInfo);
+            const { tx: finalTx, route, sponsored } = result;
+
+            console.log(`[SuiService] Transaction route: ${route.paymentMethod}`, { route });
+
+            switch (route.paymentMethod) {
+                case 'sessioncap':
+                    console.log('[SuiService] Executing with SessionCap (WAL storage)');
+                    if (!signAndExecuteTransaction) {
+                        throw new Error('SessionCap transactions require signAndExecuteTransaction callback');
+                    }
+                    return await signAndExecuteTransaction({ transaction: finalTx });
+
+                case 'gas-sponsor':
+                    console.log('[SuiService] Executing with gas sponsorship', sponsored);
+                    if (!signAndExecuteTransaction) {
+                        throw new Error('Gas sponsored transactions require signAndExecuteTransaction callback');
+                    }
+
+                    // For now, we still need the user to sign the sponsored transaction
+                    // In a full implementation, the provider might handle the signature
+                    return await signAndExecuteTransaction({ transaction: finalTx });
+
+                case 'direct-wallet':
+                    console.log('[SuiService] Executing with direct wallet payment');
+                    if (!signAndExecuteTransaction) {
+                        throw new Error('Direct wallet transactions require signAndExecuteTransaction callback');
+                    }
+                    return await signAndExecuteTransaction({ transaction: finalTx });
+
+                default:
+                    throw new Error(`Unknown transaction route: ${route.paymentMethod}`);
+            }
+        } catch (error) {
+            console.error('[SuiService] Transaction execution failed:', error);
+
+            // Check if it's a sponsorship error that should fall back to wallet
+            if (error instanceof Error && 'code' in error) {
+                const sponsorError = error as any;
+                if (sponsorError.code === 'AUTHENTICATION_FAILED' ||
+                    sponsorError.code === 'INSUFFICIENT_QUOTA' ||
+                    sponsorError.code === 'PROVIDER_ERROR') {
+
+                    console.log('[SuiService] Sponsorship failed, falling back to direct wallet');
+                    if (signAndExecuteTransaction) {
+                        return await signAndExecuteTransaction({ transaction: tx });
+                    }
+                }
+            }
+
+            throw error;
+        }
+    }
+
+    /**
+     * Check if a transaction is eligible for gas sponsorship
+     */
+    async isEligibleForGasSponsorship(tx: Transaction): Promise<boolean> {
+        const router = getGasSponsorRouter();
+
+        try {
+            const estimate = await router.estimateGas(tx);
+            return estimate.canSponsor;
+        } catch (error) {
+            console.error('[SuiService] Error checking gas sponsorship eligibility:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Get gas sponsorship route for a transaction
+     */
+    async getGasSponsorshipRoute(
+        tx: Transaction,
+        authInfo?: AuthInfo
+    ): Promise<TransactionRoute> {
+        const router = getGasSponsorRouter();
+        return await router.routeTransaction(tx, authInfo);
+    }
+
+    /**
+     * Create delete note transaction (eligible for gas sponsorship)
+     */
+    createDeleteNoteTx(notebookId: string, noteId: string): Transaction {
+        console.log('[SuiService] Creating delete note transaction:', { notebookId, noteId });
+
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::delete_note`,
+            arguments: [
+                notebook,
+                tx.pure.id(noteId),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Create create folder transaction (eligible for gas sponsorship)
+     */
+    createCreateFolderTx(notebookId: string, folderName: string, parentId?: string): Transaction {
+        console.log('[SuiService] Creating create folder transaction:', { notebookId, folderName, parentId });
+
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::create_folder`,
+            arguments: [
+                notebook,
+                tx.pure.string(folderName),
+                parentId ? tx.pure.option('address', parentId) : tx.pure.option('address', null),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Create delete folder transaction (eligible for gas sponsorship)
+     */
+    createDeleteFolderTx(notebookId: string, folderId: string): Transaction {
+        console.log('[SuiService] Creating delete folder transaction:', { notebookId, folderId });
+
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::delete_folder`,
+            arguments: [
+                notebook,
+                tx.pure.id(folderId),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Create move note transaction (eligible for gas sponsorship)
+     */
+    createMoveNoteTx(notebookId: string, noteId: string, targetFolderId?: string): Transaction {
+        console.log('[SuiService] Creating move note transaction:', { notebookId, noteId, targetFolderId });
+
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::move_note`,
+            arguments: [
+                notebook,
+                tx.pure.id(noteId),
+                targetFolderId ? tx.pure.option('address', targetFolderId) : tx.pure.option('address', null),
+            ],
+        });
+
+        return tx;
+    }
+
+    /**
+     * Create update note metadata transaction (eligible for gas sponsorship)
+     */
+    createUpdateNoteMetadataTx(notebookId: string, noteId: string, folderId?: string): Transaction {
+        console.log('[SuiService] Creating update note metadata transaction:', { notebookId, noteId, folderId });
+
+        const tx = new Transaction();
+        const notebook = tx.object(notebookId);
+
+        tx.moveCall({
+            target: `${PACKAGE_ID}::notebook::update_note_metadata`,
+            arguments: [
+                notebook,
+                tx.pure.id(noteId),
+                folderId ? tx.pure.option('address', folderId) : tx.pure.option('address', null),
+            ],
+        });
+
+        return tx;
+    }
     /**
      * Fetch all notes from the Notebook
      * Uses Dynamic Fields API to iterate through the 'notes' Table
@@ -515,3 +713,29 @@ export class SuiService {
         return unsubscribe;
     }
 }
+}
+
+export const { getGasSponsorRouter } = require("./gasSponsorship/transactionRouter");
+export { Transaction, AuthInfo, SponsoredTransaction, ProviderStatus } from "./gasSponsorship/types");
+
+
+} // End of class definition
+
+// Export gas sponsorship router instance
+export { getGasSponsorRouter, TransactionRoute, AuthInfo, SponsoredTransaction, ProviderStatus } from "./gasSponsorship/transactionRouter";
+export { createSponsorshipError } from "./gasSponsorship/types";
+
+    /**
+     * Create notebook with gas sponsorship support
+     * @param notebookName - Name for new notebook
+     * @param signAndExecuteTransaction - Function to sign and execute transaction if needed
+     * @returns Transaction execution result
+     */
+    async createNotebookWithSponsorship(
+        notebookName: string,
+        signAndExecuteTransaction: (params: { transaction: Transaction }) => Promise<any>
+    ): Promise<any> {
+        const tx = this.createNotebookTx(notebookName);
+        return await this.executeWithGasSponsorship(tx, signAndExecuteTransaction);
+    }
+

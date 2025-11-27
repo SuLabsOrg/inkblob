@@ -4,6 +4,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useSession } from '../context/SessionContext';
 import { useTheme } from '../context/ThemeContext';
 import { Modal } from './Modal';
+import { GasSponsorSettingsContent } from './GasSponsorSettings';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -14,9 +15,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const { showSessionStatus, toggleSessionStatus } = useSettings();
     const { theme, toggleTheme } = useTheme();
     const { isSessionValid, sessionExpiresAt, hotWalletAddress } = useSession();
-    const [activeTab, setActiveTab] = useState<'general' | 'appearance'>('general');
-
+    const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'gas-sponsor'>('general');
+  
     return (
+        <>
         <Modal
             isOpen={isOpen}
             onClose={onClose}
@@ -47,6 +49,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         >
                             <Moon size={16} />
                             <span>Appearance</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('gas-sponsor')}
+                            className={`w-full text-left px-3 py-2 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${
+                                activeTab === 'gas-sponsor'
+                                    ? 'bg-web3-primary/10 text-web3-primary border border-web3-primary/30'
+                                    : 'text-web3-textMuted hover:bg-web3-card hover:text-web3-text border border-transparent'
+                            }`}
+                        >
+                            <SettingsIcon size={16} />
+                            <span>Gas Sponsor</span>
                         </button>
                     </nav>
                 </div>
@@ -213,6 +226,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                 </div>
                             </div>
                         )}
+
+                        {/* Gas Sponsorship Tab */}
+                        {activeTab === 'gas-sponsor' && (
+                            <GasSponsorSettingsContent />
+                        )}
                     </div>
                 </div>
             </div>
@@ -227,5 +245,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </button>
             </div>
         </Modal>
+        </>
     );
 };

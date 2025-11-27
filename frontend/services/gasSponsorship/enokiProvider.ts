@@ -1,14 +1,12 @@
 import { Transaction } from '@mysten/sui/transactions';
 import {
-  GasSponsorProvider,
   AuthInfo,
-  SponsoredTransaction,
-  GasEstimate,
-  ProviderStatus,
   createSponsorshipError,
-  EnokiAuthRequest,
-  EnokiAuthResponse,
-  EnokiConfig
+  EnokiConfig,
+  GasEstimate,
+  GasSponsorProvider,
+  ProviderStatus,
+  SponsoredTransaction
 } from './types';
 
 export class EnokiProvider implements GasSponsorProvider {
@@ -23,8 +21,8 @@ export class EnokiProvider implements GasSponsorProvider {
     cacheExpiry: number;
   } | null = null;
 
-  async configure(config: EnokiConfig): Promise<void> {
-    if (!config.clientId) {
+  async configure(config: any): Promise<void> {
+    if (!config.customSettings.clientId) {
       throw createSponsorshipError(
         'PROVIDER_ERROR',
         'Enoki provider requires clientId configuration'
@@ -33,7 +31,7 @@ export class EnokiProvider implements GasSponsorProvider {
 
     this.config = {
       endpoint: config.endpoint || 'https://api.enoki.mystenlabs.com',
-      clientId: config.clientId,
+      clientId: config.customSettings.clientId,
       scope: config.scope || ['gas_sponsor'],
       timeout: config.timeout || 10000,
       retryAttempts: config.retryAttempts || 3

@@ -10,7 +10,7 @@ export const DEFAULT_GAS_SPONSOR_CONFIG: GasSponsorSystemConfig = {
       config: {
         enabled: true,
         priority: 2,
-        endpoint: process.env.VITE_GAS_SPONSOR_API || '',
+        endpoint: import.meta.env.VITE_GAS_SPONSOR_API || '',
         timeout: 8000,
         retryAttempts: 2,
         customSettings: {}
@@ -23,11 +23,11 @@ export const DEFAULT_GAS_SPONSOR_CONFIG: GasSponsorSystemConfig = {
       config: {
         enabled: true,
         priority: 1,
-        endpoint: process.env.VITE_ENOKI_ENDPOINT || 'https://api.enoki.mystenlabs.com',
+        endpoint: import.meta.env.VITE_ENOKI_ENDPOINT || 'https://api.enoki.mystenlabs.com',
         timeout: 10000,
         retryAttempts: 3,
         customSettings: {
-          clientId: process.env.VITE_ENOKI_CLIENT_ID || '',
+          clientId: import.meta.env.VITE_ENOKI_CLIENT_ID || '',
           scope: ['gas_sponsor']
         }
       }
@@ -44,49 +44,49 @@ export function loadGasSponsorConfig(): GasSponsorSystemConfig {
   const config = { ...DEFAULT_GAS_SPONSOR_CONFIG };
 
   // Override with environment variables if available
-  if (process.env.VITE_GAS_SPONSOR_ENABLED) {
-    const enabled = process.env.VITE_GAS_SPONSOR_ENABLED === 'true';
+  if (import.meta.env.VITE_GAS_SPONSOR_ENABLED) {
+    const enabled = import.meta.env.VITE_GAS_SPONSOR_ENABLED === 'true';
     Object.keys(config.providers).forEach(key => {
       config.providers[key].enabled = enabled;
     });
   }
 
   // Custom backend configuration
-  if (process.env.VITE_GAS_SPONSOR_API) {
-    config.providers.custom.config.endpoint = process.env.VITE_GAS_SPONSOR_API;
+  if (import.meta.env.VITE_GAS_SPONSOR_API) {
+    config.providers.custom.config.endpoint = import.meta.env.VITE_GAS_SPONSOR_API;
   }
 
-  if (process.env.VITE_GAS_SPONSOR_API_KEY) {
+  if (import.meta.env.VITE_GAS_SPONSOR_API_KEY) {
     config.providers.custom.config.customSettings = {
       ...config.providers.custom.config.customSettings,
-      apiKey: process.env.VITE_GAS_SPONSOR_API_KEY
+      apiKey: import.meta.env.VITE_GAS_SPONSOR_API_KEY
     };
   }
 
   // Enoki configuration
-  if (process.env.VITE_ENOKI_ENABLED) {
-    config.providers.enoki.enabled = process.env.VITE_ENOKI_ENABLED === 'true';
+  if (import.meta.env.VITE_ENOKI_ENABLED) {
+    config.providers.enoki.enabled = import.meta.env.VITE_ENOKI_ENABLED === 'true';
   }
 
-  if (process.env.VITE_ENOKI_ENDPOINT) {
-    config.providers.enoki.config.endpoint = process.env.VITE_ENOKI_ENDPOINT;
+  if (import.meta.env.VITE_ENOKI_ENDPOINT) {
+    config.providers.enoki.config.endpoint = import.meta.env.VITE_ENOKI_ENDPOINT;
   }
 
-  if (process.env.VITE_ENOKI_CLIENT_ID) {
+  if (import.meta.env.VITE_ENOKI_CLIENT_ID) {
     config.providers.enoki.config.customSettings = {
       ...config.providers.enoki.config.customSettings,
-      clientId: process.env.VITE_ENOKI_CLIENT_ID
+      clientId: import.meta.env.VITE_ENOKI_CLIENT_ID
     };
   }
 
   // Cache timeout override
-  if (process.env.VITE_GAS_SPONSOR_CACHE_TIMEOUT) {
-    config.cacheTimeout = parseInt(process.env.VITE_GAS_SPONSOR_CACHE_TIMEOUT, 10);
+  if (import.meta.env.VITE_GAS_SPONSOR_CACHE_TIMEOUT) {
+    config.cacheTimeout = parseInt(import.meta.env.VITE_GAS_SPONSOR_CACHE_TIMEOUT, 10);
   }
 
   // Fallback behavior override
-  if (process.env.VITE_GAS_SPONSOR_FALLBACK) {
-    config.fallbackToWallet = process.env.VITE_GAS_SPONSOR_FALLBACK === 'true';
+  if (import.meta.env.VITE_GAS_SPONSOR_FALLBACK) {
+    config.fallbackToWallet = import.meta.env.VITE_GAS_SPONSOR_FALLBACK === 'true';
   }
 
   return config;

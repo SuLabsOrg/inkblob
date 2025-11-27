@@ -1,7 +1,6 @@
 import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
-import { getGasSponsorRouter, TransactionRoute, AuthInfo } from './gasSponsorship/transactionRouter';
-import { createSponsorshipError } from './gasSponsorship/types';
+import { AuthInfo, getGasSponsorRouter, TransactionRoute } from './gasSponsorship/transactionRouter';
 
 // Package ID from environment variable (deployed contract address)
 export const PACKAGE_ID = import.meta.env.VITE_SUI_PACKAGE_ID || '0x0';
@@ -729,6 +728,6 @@ export class SuiService {
 }
 
 // Export gas sponsorship router and types
-export { getGasSponsorRouter, TransactionRoute, AuthInfo, SponsoredTransaction } from "./gasSponsorship/transactionRouter";
-export { ProviderStatus, createSponsorshipError } from "./gasSponsorship/types";
+export { getGasSponsorRouter, type AuthInfo, type SponsoredTransaction, type TransactionRoute } from "./gasSponsorship/transactionRouter";
+export { createSponsorshipError, type ProviderStatus } from "./gasSponsorship/types";
 

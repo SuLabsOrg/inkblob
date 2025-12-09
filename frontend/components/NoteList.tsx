@@ -68,7 +68,7 @@ export const NoteList: React.FC<NoteListProps> = ({
                   : 'hover:bg-web3-card/40 hover:border-web3-border/30'
                   }`}
               >
-                <div className={`text-sm font-bold mb-1 transition-colors ${selecteInkBlobId === note.id ? 'text-web3-primary' : 'text-web3-text group-hover:text-white'}`}>
+                <div className={`text-sm font-bold mb-1 transition-colors ${selecteInkBlobId === note.id ? 'text-web3-primary' : 'text-web3-text'}`}>
                   {note.title || 'New Note'}
                 </div>
                 <div className="flex gap-2 items-center">

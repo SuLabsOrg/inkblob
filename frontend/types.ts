@@ -6,6 +6,8 @@ export interface Note {
   updatedAt: Date;
   isPinned?: boolean;
   blobId?: string; // Optional for now, but used in App.tsx
+  icon?: string;
+  coverImage?: string;
 }
 
 export interface Folder {

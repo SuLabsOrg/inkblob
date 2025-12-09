@@ -209,7 +209,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     console.log('[SessionContext] Checking for WAL coins in wallet:', currentAccount.address);
 
                     // Validate WAL package ID is configured
-                    const walPackageId = import.meta.env.VITE_WAL_PACKAGE_ID;
+                    const walPackageId = (import.meta as any).env.VITE_WAL_PACKAGE_ID;
                     if (!walPackageId) {
                         throw new Error(
                             `WAL package ID not configured.\n\n` +
@@ -449,7 +449,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     console.log('[SessionContext] Checking for WAL coins in wallet:', currentAccount.address);
 
                     // Validate WAL package ID is configured
-                    const walPackageId = import.meta.env.VITE_WAL_PACKAGE_ID;
+                    const walPackageId = (import.meta as any).env.VITE_WAL_PACKAGE_ID;
                     if (!walPackageId) {
                         throw new Error(
                             `WAL package ID not configured.\n\n` +

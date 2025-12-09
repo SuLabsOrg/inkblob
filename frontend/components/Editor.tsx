@@ -1,14 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Component } from 'react';
 import { Note } from '../types';
-import { Type, Bold, Italic, Underline, CheckSquare, Share, Trash, PenLine, Save } from 'lucide-react';
+import { Trash, PenLine, Save, Share } from 'lucide-react';
 import { useNoteContent } from '../hooks/useNoteContent';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
-import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { EditorState, FORMAT_TEXT_COMMAND } from 'lexical';
+import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
+import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
+import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
+import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
+import { EditorState, $getRoot, $createParagraphNode, $createTextNode } from 'lexical';
+
+import { EditorNodes } from './editor/nodes';
+import { EditorTheme } from './editor/theme';
+import SlashMenuPlugin from './editor/plugins/SlashMenuPlugin';
+import FloatingToolbarPlugin from './editor/plugins/FloatingToolbarPlugin';
 
 interface EditorProps {
   note: Note | null;
@@ -19,63 +29,89 @@ interface EditorProps {
 }
 
 // Simple ErrorBoundary component
-class SimpleErrorBoundary extends React.Component<{ children: React.ReactNode }> {
+interface SimpleErrorBoundaryProps {
+  children: React.ReactElement;
+  onError: (error: Error) => void;
+}
+
+interface SimpleErrorBoundaryState {
+  hasError: boolean;
+}
+
+class SimpleErrorBoundary extends Component<SimpleErrorBoundaryProps, SimpleErrorBoundaryState> {
+  state: SimpleErrorBoundaryState = { hasError: false };
+  props: SimpleErrorBoundaryProps;
+
+  constructor(props: SimpleErrorBoundaryProps) {
+    super(props);
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true };
+  }
+
   componentDidCatch(error: Error) {
     console.error('Lexical Error:', error);
+    this.props.onError(error);
   }
+
   render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 border border-red-500/20 bg-red-500/10 rounded-lg text-red-500">
+          <p className="font-medium">Something went wrong in the editor.</p>
+        </div>
+      );
+    }
     return this.props.children;
   }
 }
-
-const theme = {
-  paragraph: 'mb-2 text-web3-text/90 text-lg leading-relaxed',
-  text: {
-    bold: 'font-bold text-web3-primary',
-    italic: 'italic text-web3-accent',
-    underline: 'underline decoration-web3-primary/50',
-  },
-};
 
 function onError(error: Error) {
   console.error(error);
 }
 
-// Toolbar Component
-const ToolbarPlugin = () => {
+// Plugin to synchronize editor state when content loads asynchronously
+const EditorStateSynchronizer: React.FC<{ content: string | null | undefined; isLoading: boolean; hasValidBlobId: boolean }> = ({ content, isLoading, hasValidBlobId }) => {
   const [editor] = useLexicalComposerContext();
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const format = (formatType: 'bold' | 'italic' | 'underline') => {
-    editor.dispatchCommand(FORMAT_TEXT_COMMAND, formatType);
-  };
+  useEffect(() => {
+    // For NEW notes (no blobId), isLoading will be false and content undefined.
+    // We should initialize immediately with empty content.
+    // For EXISTING notes, wait for loading to finish.
+    if (hasValidBlobId && isLoading) return;
+    if (isInitialized) return;
 
-  return (
-    <div className="flex items-center gap-2 text-web3-textMuted">
-      <button
-        onClick={() => format('bold')}
-        className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"
-        title="Bold"
-      >
-        <Bold size={16} />
-      </button>
-      <button
-        onClick={() => format('italic')}
-        className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"
-        title="Italic"
-      >
-        <Italic size={16} />
-      </button>
-      <button
-        onClick={() => format('underline')}
-        className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"
-        title="Underline"
-      >
-        <Underline size={16} />
-      </button>
-      <div className="h-4 w-[1px] bg-web3-border mx-2"></div>
-      <button className="hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all"><CheckSquare size={16} /></button>
-    </div>
-  );
+    // If content is null/undefined after loading (or for new notes), treat as empty string
+    const safeContent = content || '';
+
+    try {
+      if (safeContent.trim().startsWith('{')) {
+        // Attempt to parse as JSON (new format)
+        const state = editor.parseEditorState(safeContent);
+        editor.setEditorState(state);
+      } else {
+        throw new Error('Not JSON');
+      }
+    } catch (e) {
+      // Fallback for legacy text OR empty new note
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        // If it's legacy text, insert it. If empty string, just empty paragraph.
+        if (safeContent) {
+          const text = $createTextNode(safeContent);
+          paragraph.append(text);
+        }
+        root.append(paragraph);
+      });
+    }
+    setIsInitialized(true);
+  }, [content, isLoading, hasValidBlobId, editor, isInitialized]);
+
+  return null;
 };
 
 export const Editor: React.FC<EditorProps> = ({
@@ -93,9 +129,11 @@ export const Editor: React.FC<EditorProps> = ({
 
   const initialConfig = {
     namespace: 'InkBlobEditor',
-    theme,
+    theme: EditorTheme,
+    nodes: EditorNodes,
     onError,
-    editorState: noteContent || null, // Use loaded content as initial state
+    // Let EditorStateSynchronizer handle content loading to avoid stale closure issues
+    editorState: null,
   };
 
   useEffect(() => {
@@ -106,29 +144,9 @@ export const Editor: React.FC<EditorProps> = ({
     }
   }, [note]);
 
-  // Log content loading status
-  useEffect(() => {
-    if (note?.blobId) {
-      console.debug('[Editor] Content loading status:', {
-        blobId: note.blobId,
-        isLoading: isContentLoading,
-        hasError: !!contentError,
-        contentLength: noteContent?.length || 0,
-        error: contentError?.message
-      });
-    }
-  }, [note?.blobId, isContentLoading, contentError, noteContent?.length]);
-
   const handleSave = async () => {
-    console.log('[Editor] handleSave called for note:', note?.id);
-    console.log('[Editor] handleSave timestamp:', Date.now());
-    console.log('[Editor] handleSave isSaving state:', isSaving);
-
     if (!note) return;
-    if (isSaving) {
-      console.log('[Editor] Already saving, skipping...');
-      return;
-    }
+    if (isSaving) return;
 
     setIsSaving(true);
     try {
@@ -210,10 +228,16 @@ export const Editor: React.FC<EditorProps> = ({
 
   return (
     <LexicalComposer initialConfig={initialConfig} key={note.id}>
-      <div className="flex-1 h-full flex flex-col backdrop-blur-sm bg-web3-card/10">
-        <div className="h-12 border-b border-web3-border/50 flex items-center justify-between px-6 bg-web3-card/20">
-          <ToolbarPlugin />
+      <div className="flex-1 h-full flex flex-col backdrop-blur-sm bg-web3-card/10 relative">
+        {/* Top Bar - Minimalist */}
+        <div className="h-12 flex items-center justify-between px-6 bg-transparent z-10">
+          <div className="text-xs text-web3-textMuted/60 font-medium tracking-widest uppercase">
+            {/* Breadcrumbs or status could go here */}
+          </div>
           <div className="flex items-center gap-2 text-web3-textMuted">
+            <span className="text-xs mr-2 opacity-50">
+              {isSaving ? 'Saving...' : 'Saved'}
+            </span>
             <button
               onClick={handleSave}
               disabled={isSaving}
@@ -236,20 +260,31 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col relative">
           <div className="flex-1">
-            <div className="max-w-3xl mx-auto pt-8 px-8 pb-8">
-              <div className="text-center text-xs text-web3-textMuted/60 mb-8 font-medium tracking-widest uppercase">
-                {formattedDate}
+            <div className="max-w-3xl mx-auto pt-12 px-12 pb-24">
+
+              {/* Cover Image Placeholder (Future) */}
+              <div className="group relative mb-8 opacity-0 hover:opacity-100 transition-opacity h-6 -mt-6">
+                <button className="text-xs text-web3-textMuted hover:text-web3-text flex items-center gap-1">
+                  + Add cover
+                </button>
+              </div>
+
+              {/* Icon Placeholder (Future) */}
+              <div className="group relative mb-4 opacity-0 hover:opacity-100 transition-opacity h-6">
+                <button className="text-xs text-web3-textMuted hover:text-web3-text flex items-center gap-1">
+                  + Add icon
+                </button>
               </div>
 
               <textarea
                 value={localTitle}
                 onChange={handleTitleChange}
-                placeholder="Title"
+                placeholder="Untitled"
                 rows={1}
-                className="w-full text-4xl font-bold text-web3-text placeholder-web3-textMuted/30 resize-none border-none focus:ring-0 p-0 bg-transparent leading-tight mb-6 text-glow"
-                style={{ minHeight: '48px', overflow: 'hidden' }}
+                className="w-full text-5xl font-bold text-web3-text placeholder-web3-textMuted/20 resize-none border-none focus:ring-0 p-0 bg-transparent leading-tight mb-4 transition-all"
+                style={{ minHeight: '60px', overflow: 'hidden' }}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
                   target.style.height = 'auto';
@@ -257,29 +292,30 @@ export const Editor: React.FC<EditorProps> = ({
                 }}
               />
 
+              <div className="text-xs text-web3-textMuted/60 mb-8 font-medium tracking-widest uppercase flex items-center gap-2">
+                <span>{formattedDate}</span>
+                <span>•</span>
+                <span>{note.content.length} chars</span>
+              </div>
+
               <div className="relative min-h-[500px]">
                 <RichTextPlugin
                   contentEditable={<ContentEditable className="outline-none min-h-[500px] text-lg text-web3-text/90" />}
-                  placeholder={<div className="absolute top-0 left-0 text-web3-textMuted/30 pointer-events-none text-lg">Start typing...</div>}
+                  placeholder={<div className="absolute top-0 left-0 text-web3-textMuted/20 pointer-events-none text-lg select-none">Type '/' for commands...</div>}
                   ErrorBoundary={SimpleErrorBoundary}
                 />
                 <HistoryPlugin />
+                <ListPlugin />
+                <LinkPlugin />
+                <HorizontalRulePlugin />
+                <TablePlugin />
+                <MarkdownShortcutPlugin transformers={[]} /> {/* Default transformers */}
                 <OnChangePlugin onChange={handleEditorChange} />
+                <SlashMenuPlugin />
+                <FloatingToolbarPlugin />
+                <EditorStateSynchronizer content={noteContent} isLoading={isContentLoading} hasValidBlobId={!!(note?.blobId && note.blobId.length > 10 && note.blobId !== 'temp_blob_id')} />
               </div>
             </div>
-          </div>
-
-          {/* Bottom Toolbar */}
-          <div className="h-12 border-t border-web3-border/50 flex items-center justify-end px-6 bg-web3-card/20">
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className={`hover:text-web3-primary hover:bg-web3-cardHover p-1.5 rounded-md transition-all flex items-center gap-2 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title="Save Note"
-            >
-              <Save size={16} className={isSaving ? 'animate-pulse' : ''} />
-              <span className="text-sm">{isSaving ? 'Saving...' : 'Save'}</span>
-            </button>
           </div>
         </div>
       </div>

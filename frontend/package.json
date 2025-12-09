@@ -10,7 +10,14 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@lexical/code": "^0.38.2",
+    "@lexical/link": "^0.38.2",
+    "@lexical/list": "^0.38.2",
+    "@lexical/markdown": "^0.38.2",
     "@lexical/react": "^0.38.2",
+    "@lexical/selection": "^0.38.2",
+    "@lexical/table": "^0.38.2",
+    "@lexical/utils": "^0.38.2",
     "@mysten/dapp-kit": "^0.19.9",
     "@mysten/sui": "^1.45.0",
     "@mysten/walrus": "^0.8.4",
@@ -26,6 +33,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",

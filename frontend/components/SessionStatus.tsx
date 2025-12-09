@@ -40,7 +40,7 @@ export const SessionStatus: React.FC<SessionStatusProps> = ({ className = '' }) 
         queryFn: async () => {
             if (!hotWalletAddress) return null;
             try {
-                const walPackageId = import.meta.env.VITE_WAL_PACKAGE_ID;
+                const walPackageId = (import.meta as any).env.VITE_WAL_PACKAGE_ID;
                 if (!walPackageId) return null;
 
                 const result = await client.getBalance({

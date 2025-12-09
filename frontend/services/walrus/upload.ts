@@ -56,7 +56,7 @@ export async function uploadBlob(
                 // Extract blob ID and object reference
                 // The result structure uses snake_case
                 const blobId = result.blobId || (result as any).blob_id;
-                const blobObject = result.blobObject?.blobId || result.blobObject?.id || blobId;
+                const blobObject = result.blobObject?.blob_id || result.blobObject?.id || blobId;
 
                 return {
                     blobId,

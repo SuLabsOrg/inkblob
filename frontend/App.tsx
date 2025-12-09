@@ -1,5 +1,5 @@
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from './components/Editor';
 import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
@@ -28,6 +28,42 @@ const INITIAL_FOLDERS: Folder[] = [
   { id: 'notes', name: 'Notes', icon: 'file-text', type: 'system' },
   { id: 'trash', name: 'Trash', icon: 'trash', type: 'system' },
 ];
+
+// Global Error Boundary
+class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Global Error Boundary caught error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 flex flex-col items-center justify-center h-full bg-background text-red-500">
+          <h2 className="text-xl font-bold mb-4">Something went wrong</h2>
+          <pre className="bg-red-500/10 p-4 rounded text-sm overflow-auto max-w-2xl">
+            {this.state.error?.toString()}
+          </pre>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="mt-4 px-4 py-2 bg-web3-primary text-white rounded hover:bg-web3-primary/90"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function AppContent() {
   const currentAccount = useCurrentAccount();
@@ -188,7 +224,7 @@ function AppContent() {
     // 1. Optimistic Update
     const newNote: Note = {
       id: blockchainNoteId, // Use blockchain ID for consistency
-      title: 'New Note',
+      title: '',
       content: '',
       folderId: selectedFolderId === 'trash' || selectedFolderId === 'all' ? 'notes' : selectedFolderId,
       updatedAt: new Date(),
@@ -203,7 +239,7 @@ function AppContent() {
     }
 
     try {
-      const encryptedTitle = await encryptText('New Note', encryptionKey);
+      const encryptedTitle = await encryptText(newNote.title || 'Untitled', encryptionKey);
 
       // Track fresh session auth result (if we just authorized)
       let sessionAuthResult = null;
@@ -715,13 +751,16 @@ function AppContent() {
 
           <main className="flex-1 bg-background overflow-y-auto relative">
             {selecteInkBlobId ? (
-              <Editor
-                note={notes.find(n => n.id === selecteInkBlobId)!}
-                onUpdateNote={handleUpdateNote}
-                onSave={handleSaveNote}
-                onDeleteNote={handleDeleteNote}
-                onCreateNote={handleCreateNote}
-              />
+              <GlobalErrorBoundary>
+                <Editor
+                  key={selecteInkBlobId}
+                  note={notes.find(n => n.id === selecteInkBlobId)!}
+                  onUpdateNote={handleUpdateNote}
+                  onSave={handleSaveNote}
+                  onDeleteNote={handleDeleteNote}
+                  onCreateNote={handleCreateNote}
+                />
+              </GlobalErrorBoundary>
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 Select a note or create a new one

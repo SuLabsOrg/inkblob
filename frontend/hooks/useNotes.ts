@@ -38,7 +38,7 @@ export function useNotes() {
                     console.debug('[useNotes] decryptedNotes:', {
                         note: rawNote,
                     });
-                        
+
                     // Extract common fields outside try-catch to avoid scope issues
                     const noteId = rawNote.id || 'unknown';
                     const updatedAt = new Date(parseInt(rawNote.updated_at) || Date.now());
@@ -105,7 +105,7 @@ export function useNotes() {
                         });
 
                         // For development, you might want to see the raw data
-                        if (import.meta.env.DEV) {
+                        if ((import.meta as any).env.DEV) {
                             console.debug('Raw note data for debugging:', rawNote);
                         }
 

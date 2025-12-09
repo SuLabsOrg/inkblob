@@ -50,23 +50,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="px-4 pb-2 pt-4">
         <h3 className="text-xs font-bold text-web3-textMuted uppercase tracking-wider mb-2 pl-2">Library</h3>
         <ul>
-          {folders.map(folder => (
-            <li key={folder.id} className="mb-1">
-              <button
-                onClick={() => onSelectFolder(folder.id)}
-                className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${selectedFolderId === folder.id
-                  ? 'bg-web3-primary/20 text-web3-primary shadow-[0_0_10px_rgba(139,92,246,0.2)]'
-                  : 'text-web3-textMuted hover:bg-web3-cardHover hover:text-web3-text'
-                  }`}
-              >
-                <span className={`mr-3 ${selectedFolderId === folder.id ? 'text-web3-primary' : 'text-web3-textMuted'}`}>
-                  {getIcon(folder.icon)}
-                </span>
-                {folder.name}
-              </button>
-            </li>
-          ))}
+          {folders
+            .filter(f => f.id !== 'trash') // Filter out Trash
+            .map(folder => (
+              <li key={folder.id} className="mb-1">
+                <button
+                  onClick={() => onSelectFolder(folder.id)}
+                  className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${selectedFolderId === folder.id
+                    ? 'bg-web3-primary/20 text-web3-primary shadow-[0_0_10px_rgba(139,92,246,0.2)]'
+                    : 'text-web3-textMuted hover:bg-web3-cardHover hover:text-web3-text'
+                    }`}
+                >
+                  <span className={`mr-3 ${selectedFolderId === folder.id ? 'text-web3-primary' : 'text-web3-textMuted'}`}>
+                    {getIcon(folder.icon)}
+                  </span>
+                  {folder.name}
+                </button>
+              </li>
+            ))}
         </ul>
+
       </div>
 
       {/* Bottom area */}
@@ -94,6 +97,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Settings
           </span>
         </div>
+
+        {/* Trash Item (Bottom) */}
+        {folders.find(f => f.id === 'trash') && (
+          <div
+            onClick={() => onSelectFolder('trash')}
+            className={`flex items-center text-xs justify-between cursor-pointer transition-colors group p-2 rounded hover:bg-web3-cardHover ${selectedFolderId === 'trash' ? 'text-red-400 bg-red-500/10' : 'text-web3-textMuted hover:text-red-400'
+              }`}
+          >
+            <span className="flex items-center gap-2">
+              <div className={`p-1 rounded bg-web3-card border border-web3-border transition-colors ${selectedFolderId === 'trash' ? 'border-red-400/50' : 'group-hover:border-red-400/50'
+                }`}>
+                <Trash2 size={12} />
+              </div>
+              Trash
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

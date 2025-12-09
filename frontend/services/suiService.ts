@@ -1,8 +1,9 @@
 import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
+import { bcs } from '@mysten/sui/bcs';
 
 // Package ID from environment variable (deployed contract address)
-export const PACKAGE_ID = import.meta.env.VITE_SUI_PACKAGE_ID || '0x0';
+export const PACKAGE_ID = (import.meta as any).env.VITE_SUI_PACKAGE_ID || '0x0';
 
 // Log package ID for debugging
 console.log('[SuiService] Using PACKAGE_ID:', PACKAGE_ID);
@@ -492,7 +493,7 @@ export class SuiService {
             target: `${PACKAGE_ID}::notebook::delete_note`,
             arguments: [
                 notebook,
-                tx.pure.id(noteId),
+                tx.pure(bcs.Address.serialize(noteId)),
             ],
         });
 

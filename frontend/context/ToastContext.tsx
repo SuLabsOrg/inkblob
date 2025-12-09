@@ -31,7 +31,7 @@ interface ToastContextValue {
   toast: (options: Omit<Toast, 'id'>) => string;
   success: (title: string, description?: string) => string;
   error: (title: string, description?: string) => string;
-  loading: (title: string, promise?: Promise<any>) => string;
+  loading: (title: string, description?: string | Promise<any>) => string;
   info: (title: string, description?: string) => string;
   dismiss: (id: string) => void;
   clear: () => void;
@@ -180,7 +180,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (description && typeof description !== 'string') {
       return toast({ type: 'loading', title, promise: description });
     } else {
-      return toast({ type: 'loading', title, description });
+      return toast({ type: 'loading', title, description: description as string | undefined });
     }
   }, [toast]);
 

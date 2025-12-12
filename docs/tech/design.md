@@ -105,8 +105,9 @@ InkBlob follows a **three-layer decentralized architecture** with clear separati
 │  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐ │
 │  │   UI Components │  │  Crypto Service  │  │ Wallet Manager│ │
 │  │   - NoteEditor  │  │  - AES-GCM       │  │ - Connection  │ │
-│  │   - FolderTree  │  │  - HKDF          │  │ - Signing     │ │
-│  │   - NoteList    │  │  - IV Generation │  │ - SessionCap  │ │
+│  │     * SlashMenu │  │  - HKDF          │  │ - Signing     │ │
+│  │     * TableGrid │  │  - IV Generation │  │ - SessionCap  │ │
+│  │   - FolderTree  │  │                  │  │               │ │
 │  └────────┬────────┘  └────────┬─────────┘  └───────┬───────┘ │
 │           │                    │                     │         │
 │  ┌────────┴────────────────────┴─────────────────────┴───────┐ │

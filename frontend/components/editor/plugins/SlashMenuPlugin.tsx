@@ -6,7 +6,7 @@ import {
     useBasicTypeaheadTriggerMatch,
 } from '@lexical/react/LexicalTypeaheadMenuPlugin';
 import { TextNode } from 'lexical';
-import { useCallback, useState, useMemo } from 'react';
+import { useCallback, useState, useMemo, useRef } from 'react';
 import * as React from 'react';
 import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
@@ -27,6 +27,7 @@ import {
     Type,
     Table,
 } from 'lucide-react';
+import { TableGridSelector } from '../ui/TableGridSelector';
 
 class SlashMenuOption extends MenuOption {
     title: string;
@@ -34,6 +35,12 @@ class SlashMenuOption extends MenuOption {
     keywords: Array<string>;
     keyboardShortcut?: string;
     onSelect: (editor: any) => void;
+
+    // Add reference capability
+    refElement: HTMLElement | null = null;
+    setRefElement = (element: HTMLElement | null) => {
+        this.refElement = element;
+    };
 
     constructor(
         title: string,
@@ -73,7 +80,7 @@ const SlashMenuItem: React.FC<SlashMenuItemProps> = ({
             tabIndex={-1}
             className={`cursor-pointer flex items-center gap-3 px-3 py-2 text-sm outline-none transition-colors ${isSelected ? 'bg-web3-cardHover text-web3-primary' : 'text-web3-text'
                 }`}
-            ref={option.setRefElement}
+            ref={option.setRefElement} // Use the specific setter
             role="option"
             aria-selected={isSelected}
             id={'typeahead-item-' + index}
@@ -137,10 +144,21 @@ const SlashMenuPopover = ({
 export default function SlashMenuPlugin() {
     const [editor] = useLexicalComposerContext();
     const [queryString, setQueryString] = useState<string | null>(null);
+    const [isGridSelectorOpen, setIsGridSelectorOpen] = useState(false);
+    const [activeTableOption, setActiveTableOption] = useState<SlashMenuOption | null>(null);
+    const [gridSelectorPosition, setGridSelectorPosition] = useState<{ top: number; left: number } | null>(null);
 
-    const checkForSlashTrigger = useBasicTypeaheadTriggerMatch('/', {
+    const checkSlashTrigger = useBasicTypeaheadTriggerMatch('/', {
         minLength: 0,
     });
+
+    // Wrapper to control when the menu should show
+    // If the grid selector is open, we might want to hide the slash menu or keep it?
+    // Usually, the slash menu closes when an option is selected.
+
+    // We need to keep the grid selector open even after the Slash Menu technically "closes" or transitions.
+    // However, the standard behavior for `onSelect` in the plugin is to close the menu.
+    // We will handle the "Table" selection by opening our secondary UI.
 
     const options = useMemo(() => {
         return [
@@ -241,7 +259,10 @@ export default function SlashMenuPlugin() {
                 icon: <Table size={18} />,
                 keywords: ['table', 'grid', 'spreadsheet'],
                 onSelect: (editor) => {
-                    editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3' });
+                    // Don't dispatch immediately. Check if we can show selector.
+                    setIsGridSelectorOpen(true);
+                    // We need to NOT close the menu immediately if possible?
+                    // Actually, we probably WANT the slash menu close, and the table selector to open.
                 },
             }),
         ];
@@ -254,56 +275,105 @@ export default function SlashMenuPlugin() {
             closeMenu: () => void,
             matchingString: string,
         ) => {
-            editor.update(() => {
-                if (nodeToRemove) {
-                    nodeToRemove.remove();
+            // If it's the Table option, we handle it differently
+            if (selectedOption.title === 'Table') {
+                if (selectedOption.refElement) {
+                    const rect = selectedOption.refElement.getBoundingClientRect();
+                    setGridSelectorPosition({
+                        top: rect.top,
+                        left: rect.right + 5
+                    });
                 }
-                selectedOption.onSelect(editor);
+                setActiveTableOption(selectedOption);
+                setIsGridSelectorOpen(true);
+                // We remove the slash text
+                editor.update(() => {
+                    if (nodeToRemove) {
+                        nodeToRemove.remove();
+                    }
+                });
+                // We close the Slash menu
                 closeMenu();
-            });
+            } else {
+                editor.update(() => {
+                    if (nodeToRemove) {
+                        nodeToRemove.remove();
+                    }
+                    selectedOption.onSelect(editor);
+                    closeMenu();
+                });
+            }
         },
         [editor],
     );
 
+    const onTableGridSelect = (rows: number, cols: number) => {
+        editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: String(cols), rows: String(rows) });
+        setIsGridSelectorOpen(false);
+        setActiveTableOption(null);
+        setGridSelectorPosition(null);
+    };
+
     return (
-        <LexicalTypeaheadMenuPlugin<SlashMenuOption>
-            onQueryChange={setQueryString}
-            onSelectOption={onSelectOption}
-            triggerFn={checkForSlashTrigger}
-            options={options}
-            menuRenderFn={(
-                anchorElementRef,
-                { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
-            ) => {
-                if (anchorElementRef.current && options.length
-                    && queryString !== null) {
-                    return (
-                        <SlashMenuPopover anchorElementRef={anchorElementRef}>
-                            <div className="px-3 py-2 text-xs font-semibold text-web3-textMuted uppercase tracking-wider">
-                                Basic Blocks
-                            </div>
-                            <ul>
-                                {options.map((option, i) => (
-                                    <SlashMenuItem
-                                        key={i}
-                                        index={i}
-                                        isSelected={selectedIndex === i}
-                                        onClick={() => {
-                                            setHighlightedIndex(i);
-                                            selectOptionAndCleanUp(option);
-                                        }}
-                                        onMouseEnter={() => {
-                                            setHighlightedIndex(i);
-                                        }}
-                                        option={option}
-                                    />
-                                ))}
-                            </ul>
-                        </SlashMenuPopover>
-                    );
-                }
-                return null;
-            }}
-        />
+        <>
+            <LexicalTypeaheadMenuPlugin<SlashMenuOption>
+                onQueryChange={setQueryString}
+                onSelectOption={onSelectOption}
+                triggerFn={checkSlashTrigger}
+                options={options}
+                menuRenderFn={(
+                    anchorElementRef,
+                    { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
+                ) => {
+                    if (anchorElementRef.current && options.length
+                        && queryString !== null) {
+                        return (
+                            <SlashMenuPopover anchorElementRef={anchorElementRef}>
+                                <div className="px-3 py-2 text-xs font-semibold text-web3-textMuted uppercase tracking-wider">
+                                    Basic Blocks
+                                </div>
+                                <ul>
+                                    {options.map((option, i) => (
+                                        <SlashMenuItem
+                                            key={i}
+                                            index={i}
+                                            isSelected={selectedIndex === i}
+                                            onClick={() => {
+                                                setHighlightedIndex(i);
+                                                selectOptionAndCleanUp(option);
+                                            }}
+                                            onMouseEnter={() => {
+                                                setHighlightedIndex(i);
+                                            }}
+                                            option={option}
+                                        />
+                                    ))}
+                                </ul>
+                            </SlashMenuPopover>
+                        );
+                    }
+                    return null;
+                }}
+            />
+            {isGridSelectorOpen && gridSelectorPosition && (
+                <TableGridSelector
+                    onSelect={onTableGridSelect}
+                    close={() => {
+                        setIsGridSelectorOpen(false);
+                        setActiveTableOption(null);
+                        setGridSelectorPosition(null);
+                    }}
+                    position={gridSelectorPosition}
+                />
+            )}
+            {/* Fallback if ref is lost or not set, maybe use a centered modal or last text cursor pos? 
+                But for now, `refElement` should be set if the menu was rendered.
+                Wait, if the menu closes, `refElement` (the DOM node) might be removed from DOM.
+                Ah, `SlashMenuPopover` renders children. If `closeMenu` is called, the `LexicalTypeaheadMenuPlugin` stops rendering the menu.
+                So `refElement` will be stale/removed.
+                
+                FIX: We need to capture the position BEFORE closing the menu.
+            */}
+        </>
     );
 }

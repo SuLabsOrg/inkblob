@@ -596,13 +596,16 @@ struct ArweaveBackupRecorded has copy, drop {
 
 **REQ-UI-005**: The system SHALL provide a rich text note editor interface using Lexical framework for creating and editing notes.
 
-**REQ-UI-006**: The system SHALL provide a formatting toolbar with controls for:
-- Text formatting (bold, italic, underline, strikethrough)
-- Headings (H1, H2, H3)
-- Lists (ordered and unordered)
-- Code blocks
-- Links
-- Tables
+**REQ-UI-006**: The system SHALL provide a Notion-like editor experience featuring:
+- **Slash Menu**: Triggered by `/` command to insert blocks (headings, lists, tables).
+- **Block-Based Structure**: Content is treated as structured blocks rather than a single text blob.
+- **Markdown Shortcuts**: Support for auto-formatting (e.g., `# ` for Heading 1, `- ` for lists).
+
+**REQ-UI-006A**: The system SHALL provide a "Table Grid Selector" UI when creating tables:
+- Visual grid enabling users to select rows/columns (e.g., 5x5).
+- Interactive hover state.
+
+**REQ-UI-006B**: The system SHALL provide a floating formatting toolbar for selected text (Bold, Italic, Link).
 
 **REQ-UI-007**: The system SHALL provide UI controls to:
 - Create new folders

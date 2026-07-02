@@ -1,6 +1,8 @@
-/* Standard CSS replacement for Tailwind directives since we use CDN */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@layer utilities {
+@layer base {
   :root {
     /* Light Mode Defaults */
     --bg-color: #f8f9fa;
@@ -30,6 +32,30 @@
     /* Lighter Cyan */
   }
 
+  body {
+    overscroll-behavior: none;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+@layer utilities {
   .glass {
     background-color: var(--card-bg);
     backdrop-filter: blur(12px);
@@ -49,5 +75,32 @@
 
   .text-glow {
     text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  }
+
+  /* Scoped scrollbar styling for internal scroll panes (sidebar, note list,
+     editor, popovers) — distinct from the global ::-webkit-scrollbar rule
+     above so panes can opt into a slightly slimmer, panel-appropriate look.
+     Firefox has no ::-webkit-scrollbar equivalent, hence the standard props. */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
   }
 }

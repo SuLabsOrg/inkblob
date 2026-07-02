@@ -2,7 +2,7 @@ import { getFullnodeUrl } from '@mysten/sui/client';
 import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { walrus } from '@mysten/walrus';
 // Import WASM URL for Vite bundler
-// @ts-ignore
+// @ts-expect-error - no type declaration for Vite's `?url` suffix import
 import walrusWasmUrl from '@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url';
 
 export const WALRUS_CONFIG = {

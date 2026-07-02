@@ -123,7 +123,7 @@ describe('Session Key Derivation (P0/P1 Security Fixes)', () => {
             expect(key).toBeInstanceOf(CryptoKey);
             expect(key.type).toBe('secret');
             expect(key.algorithm.name).toBe('AES-GCM');
-            // @ts-ignore - length is on AesKeyAlgorithm
+            // @ts-expect-error - length is on AesKeyAlgorithm, not the generic KeyAlgorithm type
             expect(key.algorithm.length).toBe(256);
         });
 
@@ -148,9 +148,9 @@ describe('Session Key Derivation (P0/P1 Security Fixes)', () => {
             // Both should be valid AES-256-GCM keys
             expect(key1.algorithm.name).toBe('AES-GCM');
             expect(key2.algorithm.name).toBe('AES-GCM');
-            // @ts-ignore
+            // @ts-expect-error - length is on AesKeyAlgorithm, not the generic KeyAlgorithm type
             expect(key1.algorithm.length).toBe(256);
-            // @ts-ignore
+            // @ts-expect-error - length is on AesKeyAlgorithm, not the generic KeyAlgorithm type
             expect(key2.algorithm.length).toBe(256);
         });
     });

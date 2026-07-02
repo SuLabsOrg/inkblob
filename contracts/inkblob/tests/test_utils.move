@@ -5,7 +5,7 @@ module inkblob::test_utils {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
     use wal::wal::WAL;
-    use inkblob::notebook::{Self, Notebook, NotebookRegistry};
+    use inkblob::notebook::{Self, Notebook, NotebookRegistry, WalFeeReserve};
 
     // ========== Test Addresses ==========
 
@@ -104,6 +104,26 @@ module inkblob::test_utils {
 
         test_scenario::next_tx(scenario, sender);
         test_scenario::take_shared<Notebook>(scenario)
+    }
+
+    /// Create and setup a notebook for testing, also returning its WalFeeReserve escrow
+    /// (created and shared alongside the Notebook by notebook::create_notebook). Use this
+    /// instead of create_test_notebook whenever the test needs to call update_note /
+    /// update_note_with_session / claim_wal_storage_rebate, which all require the reserve.
+    public fun create_test_notebook_with_reserve(
+        scenario: &mut Scenario,
+        name: vector<u8>
+    ): (Notebook, WalFeeReserve) {
+        let sender = test_scenario::sender(scenario);
+        test_scenario::next_tx(scenario, sender);
+
+        let notebook_name = string::utf8(name);
+        notebook::create_notebook(notebook_name, test_scenario::ctx(scenario));
+
+        test_scenario::next_tx(scenario, sender);
+        let notebook = test_scenario::take_shared<Notebook>(scenario);
+        let reserve = test_scenario::take_shared<WalFeeReserve>(scenario);
+        (notebook, reserve)
     }
 
     /// Generate a unique note ID for testing

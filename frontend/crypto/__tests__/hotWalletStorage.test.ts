@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { toB64 } from '@mysten/sui/utils';
-import { KEY_DERIVATION_MESSAGE } from '../keyDerivation';
+import { fromB64, toB64 } from '@mysten/sui/utils';
+import { deriveEncryptionKey, KEY_DERIVATION_MESSAGE } from '../keyDerivation';
 import {
     storeHotWallet,
     retrieveHotWallet,
@@ -112,6 +112,25 @@ describe('Hot Wallet Storage (CRYPTO-4 Security Fix)', () => {
             );
 
             expect(result).toBeNull();
+        });
+
+        it('encrypts the stored hot wallet under a key distinct from the note-content encryption key (security fix)', async () => {
+            const keypair = new Ed25519Keypair();
+            const mockSignature = toB64(new Uint8Array(64).fill(42));
+
+            await storeHotWallet(keypair, mockFingerprint, mockExpiresAt, mockSignature, mockUserAddress);
+
+            const stored = JSON.parse(localStorage.getItem(`inkblob_hot_wallet_${mockFingerprint}`)!);
+            const iv = fromB64(stored.iv);
+            const ciphertext = fromB64(stored.encryptedPrivateKey);
+
+            // Derive the note-CONTENT encryption key from the same signature/address and attempt
+            // to decrypt the hot-wallet blob with it - this must fail (AES-GCM auth tag mismatch),
+            // proving the two keys are not the same even though they share the same root signature.
+            const contentKey = await deriveEncryptionKey(mockSignature, mockUserAddress);
+            await expect(
+                crypto.subtle.decrypt({ name: 'AES-GCM', iv }, contentKey, ciphertext)
+            ).rejects.toThrow();
         });
 
         it('should return null for expired hot wallet', async () => {

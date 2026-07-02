@@ -1,33 +1,25 @@
 import { useSuiClient } from '@mysten/dapp-kit';
 import { useQuery } from '@tanstack/react-query';
-import { useEncryption } from '../context/EncryptionContext';
 import { decryptText } from '../crypto/decryption';
 import { SuiService } from '../services/suiService';
-import { useNotebook } from './useNotebook';
-
-export interface Note {
-    id: string;
-    title: string;
-    content: string; // This might be empty if we don't fetch blob content immediately
-    folderId: string;
-    updatedAt: Date;
-    blobId: string; // Store blobId for later content fetching
-}
+import { Note } from '../types';
+import { useActiveNotebook } from './useActiveNotebook';
 
 export function useNotes() {
-    const { data: notebook } = useNotebook();
-    const { encryptionKey } = useEncryption();
+    // Active-notebook seam - see useFolders' matching comment: own mode is byte-identical to the
+    // old useNotebook()+useEncryption() pair, shared mode swaps in the shared id + unwrapped key.
+    const { notebookId, encryptionKey } = useActiveNotebook();
     const client = useSuiClient();
     const suiService = new SuiService(client);
 
     return useQuery({
-        queryKey: ['notes', notebook?.data?.objectId],
+        queryKey: ['notes', notebookId],
         queryFn: async () => {
-            if (!notebook || !encryptionKey || !notebook.data?.objectId) return [];
+            if (!notebookId || !encryptionKey) return [];
 
             try {
                 // 1. Fetch raw encrypted notes from Sui
-                const rawNotes = await suiService.fetchNotes(notebook.data.objectId);
+                const rawNotes = await suiService.fetchNotes(notebookId);
                 console.debug('[useNotes] fetchNotes:', {
                     rawNotes: rawNotes,
                 });
@@ -43,11 +35,20 @@ export function useNotes() {
                     const noteId = rawNote.id || 'unknown';
                     const updatedAt = new Date(parseInt(rawNote.updated_at) || Date.now());
                     const blobId = rawNote.blob_id || '';
+                    const isDeleted = rawNote.is_deleted === true;
+                    const walPaid = parseInt(rawNote.wal_paid) || 0;
+                    const rebateClaimed = rawNote.rebate_claimed === true;
 
                     // Handle folderId (Option<address>) - Move Option representation
                     let folderId = 'notes'; // Default folder
                     if (rawNote.folder_id && rawNote.folder_id.fields && rawNote.folder_id.fields.vec && rawNote.folder_id.fields.vec.length > 0) {
                         folderId = rawNote.folder_id.fields.vec[0];
+                    }
+
+                    // Handle parentNoteId (Option<ID>) - same Move Option representation as folder_id
+                    let parentNoteId: string | null = null;
+                    if (rawNote.parent_note_id && rawNote.parent_note_id.fields && rawNote.parent_note_id.fields.vec && rawNote.parent_note_id.fields.vec.length > 0) {
+                        parentNoteId = rawNote.parent_note_id.fields.vec[0];
                     }
 
                     try {
@@ -76,6 +77,10 @@ export function useNotes() {
                                 folderId: folderId,
                                 updatedAt: updatedAt,
                                 blobId: blobId,
+                                isDeleted,
+                                parentNoteId,
+                                walPaid,
+                                rebateClaimed,
                             } as Note;
                         }
 
@@ -89,6 +94,10 @@ export function useNotes() {
                             folderId: folderId,
                             updatedAt: updatedAt,
                             blobId: blobId,
+                            isDeleted,
+                            parentNoteId,
+                            walPaid,
+                            rebateClaimed,
                         } as Note;
                     } catch (e) {
                         // Enhanced error handling for decryption failures
@@ -117,6 +126,10 @@ export function useNotes() {
                             folderId: folderId,
                             updatedAt: updatedAt,
                             blobId: blobId,
+                            isDeleted,
+                            parentNoteId,
+                            walPaid,
+                            rebateClaimed,
                         } as Note;
                     }
                 }));
@@ -127,6 +140,6 @@ export function useNotes() {
                 return [];
             }
         },
-        enabled: !!notebook && !!encryptionKey && !!notebook.data?.objectId,
+        enabled: !!notebookId && !!encryptionKey,
     });
 }

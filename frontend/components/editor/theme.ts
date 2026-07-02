@@ -21,6 +21,19 @@ export const EditorTheme = {
     },
     image: 'editor-image',
     link: 'text-web3-primary hover:underline cursor-pointer',
+    callout: {
+        container: 'flex gap-3 rounded-lg p-4 my-3 border [&_.callout-icon]:text-xl [&_.callout-icon]:leading-none [&_.callout-content]:text-web3-text/90 [&_.callout-content_p]:mb-0',
+        gray: 'bg-web3-card border-web3-border',
+        purple: 'bg-web3-primary/10 border-web3-primary/20',
+        pink: 'bg-web3-secondary/10 border-web3-secondary/20',
+        cyan: 'bg-web3-accent/10 border-web3-accent/20',
+        red: 'bg-red-500/10 border-red-500/20',
+        green: 'bg-green-500/10 border-green-500/20',
+    },
+    // Content visibility when closed is handled natively by <details> - no CSS needed for that.
+    collapsibleContainer: 'border border-web3-border rounded-lg my-2 bg-web3-card/30',
+    collapsibleTitle: 'flex items-center gap-2 px-3 py-2 cursor-pointer select-none text-web3-text font-medium marker:content-none [&::-webkit-details-marker]:hidden before:content-["▶"] before:text-web3-textMuted before:text-xs [details[open]>&]:before:content-["▼"]',
+    collapsibleContent: 'collapsible-content px-3 pb-3 pt-1 border-t border-web3-border/50',
     text: {
         bold: 'font-bold text-web3-text',
         italic: 'italic',

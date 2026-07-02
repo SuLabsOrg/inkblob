@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEncryption } from '../context/EncryptionContext';
 import { downloadInkBlobContent } from '../services/walrus/download';
+import { useActiveNotebook } from './useActiveNotebook';
 
 /**
  * Check if a blob ID is valid for fetching from Walrus
  * Filters out placeholder values and invalid formats
  */
-function isValidBlobId(blobId: string | null | undefined): blobId is string {
+export function isValidBlobId(blobId: string | null | undefined): blobId is string {
     // Check for null/undefined/empty
     if (!blobId || blobId.trim() === '') {
         return false;
@@ -33,7 +33,11 @@ function isValidBlobId(blobId: string | null | undefined): blobId is string {
  * Hook to fetch and decrypt note content from Walrus
  */
 export function useNoteContent(blobId: string | null | undefined) {
-    const { encryptionKey } = useEncryption();
+    // Active-notebook seam: own mode = the own encryption key (identical to before), shared mode
+    // = the unwrapped shared content key. The queryKey stays ['note-content', blobId] - safe
+    // because a given blobId belongs to exactly one notebook, so the blobId -> correct-key
+    // mapping is deterministic and cached plaintext can't be poisoned across modes.
+    const { encryptionKey } = useActiveNotebook();
 
     return useQuery({
         queryKey: ['note-content', blobId],

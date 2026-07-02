@@ -1,5 +1,21 @@
 import { Toast } from '../context/ToastContext';
 
+// Move contract abort codes (notebook.move error constants)
+const MOVE_ABORT_CODE_REGEX = /MoveAbort\([^)]*\)?,?\s*(\d+)\)/;
+const GENERIC_ABORT_CODE_REGEX = /abort code[:\s]+(\d+)/i;
+
+/**
+ * Extracts the numeric Move abort code from an error's message, if present. Reused by both
+ * sanitizeWeb3Error (for generic user-facing messaging) and callers that need to branch on a
+ * *specific* abort code (e.g. E_VERSION_MISMATCH) rather than just getting a sanitized string -
+ * keeps both use sites parsing the exact same pattern instead of drifting apart.
+ */
+export const getMoveAbortCode = (error: any): number | null => {
+  const errorMessage = error?.message || error || '';
+  const match = errorMessage.match(MOVE_ABORT_CODE_REGEX) || errorMessage.match(GENERIC_ABORT_CODE_REGEX);
+  return match ? parseInt(match[1], 10) : null;
+};
+
 // Web3-specific error message sanitization
 export const sanitizeWeb3Error = (error: any): { title: string; description: string } => {
   const errorMessage = error?.message || error || 'Unknown error';
@@ -61,6 +77,28 @@ export const sanitizeWeb3Error = (error: any): { title: string; description: str
     };
   }
 
+  // Move contract abort codes (notebook.move error constants)
+  const abortMatch = errorMessage.match(/MoveAbort\([^)]*\)?,?\s*(\d+)\)/) || errorMessage.match(/abort code[:\s]+(\d+)/i);
+  if (abortMatch) {
+    const code = parseInt(abortMatch[1], 10);
+    const abortMessages: Record<number, { title: string; description: string }> = {
+      7: { title: 'Note Not Found', description: 'This note no longer exists on-chain. It may have been moved or removed elsewhere.' },
+      8: { title: 'Folder Not Found', description: 'This folder no longer exists on-chain. Try refreshing your workspace.' },
+      9: { title: 'Parent Folder Not Found', description: 'The destination folder no longer exists. Try refreshing your workspace.' },
+      15: { title: 'Invalid Batch Size', description: 'The reorder request was malformed. Please try the drag-and-drop again.' },
+      16: { title: 'Sort Order Conflict', description: 'Another change updated this folder\'s order first. Please try again.' },
+      17: { title: 'Folder Nesting Too Deep', description: 'Folders can only be nested 5 levels deep. Choose a shallower location.' },
+      18: { title: 'Circular Folder Reference', description: 'You can\'t move a folder inside one of its own subfolders.' },
+      19: { title: 'Parent Folder Deleted', description: 'The destination folder has been deleted and can\'t accept new items.' },
+      24: { title: 'Note Changed Elsewhere', description: 'This note was updated from another device or session. Reload the note to see the latest version before saving again.' },
+      25: { title: 'Nesting Too Deep', description: 'Sub-pages can only be nested 5 levels deep. Choose a shallower parent page.' },
+      26: { title: 'Circular Page Reference', description: 'You can\'t nest a page inside one of its own sub-pages.' },
+      27: { title: 'Parent Page Not Found', description: 'The parent page no longer exists on-chain. Try refreshing your workspace.' },
+      28: { title: 'Parent Page Deleted', description: 'The parent page has been moved to Trash and can\'t accept new sub-pages.' },
+    };
+    if (abortMessages[code]) return abortMessages[code];
+  }
+
   // Generic fallback with sanitized message
   const cleanMessage = errorMessage
     .replace(/0x[a-fA-F0-9]{64}/g, '...wallet_address...') // Hide addresses
@@ -86,27 +124,6 @@ export const createWeb3LoadingToast = (operation: string, step?: string): Omit<T
   title: `${operation}...`,
   description: step || 'Processing transaction...'
 });
-
-// Multi-step operation toast helpers
-export const createMultiStepToast = (
-  operation: string,
-  promise: Promise<any>,
-  steps: string[] = []
-) => {
-  let currentStep = 0;
-  const stepToast = (step: string) => createWeb3LoadingToast(operation, step);
-
-  return {
-    ...createWeb3LoadingToast(operation, steps[0] || 'Starting...'),
-    promise: promise
-      .then((result) => {
-        return result;
-      })
-      .catch((error) => {
-        throw error;
-      })
-  };
-};
 
 // Specific operation templates
 export const ToastTemplates = {

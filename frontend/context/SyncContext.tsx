@@ -1,24 +1,29 @@
 import React, { createContext, useContext, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSuiService } from '../hooks/useSuiService';
-import { useNotebook } from '../hooks/useNotebook';
+import { useActiveNotebook } from '../hooks/useActiveNotebook';
 
-interface SyncContextValue {
-    // Add any sync state if needed, e.g., isSyncing
-}
+// Placeholder for future sync state (e.g. isSyncing) - empty for now
+type SyncContextValue = Record<string, never>;
 
 const SyncContext = createContext<SyncContextValue | null>(null);
 
 export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const queryClient = useQueryClient();
     const suiService = useSuiService();
-    const { data: notebook } = useNotebook();
+    // Gated on the ACTIVE notebook id (own or shared) rather than useNotebook directly, so a
+    // grantee viewing a shared notebook still gets event-driven invalidation even while their own
+    // notebook is missing/initializing. Own-mode value is identical to the old
+    // notebook?.data?.objectId. The invalidations below deliberately stay prefix-shaped
+    // (['notes'] / ['folders']): React Query v5's default fuzzy matching prefix-matches
+    // ['notes', <anyNotebookId>], so they cover both modes' query keys unchanged.
+    const { notebookId } = useActiveNotebook();
 
     useEffect(() => {
         let unsubscribe: (() => void) | undefined;
 
         const setupSubscription = async () => {
-            if (!notebook?.data?.objectId) return;
+            if (!notebookId) return;
 
             try {
                 unsubscribe = await suiService.subscribeToEvents((event) => {
@@ -40,7 +45,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 unsubscribe();
             }
         };
-    }, [suiService, notebook?.data?.objectId, queryClient]);
+    }, [suiService, notebookId, queryClient]);
 
     return (
         <SyncContext.Provider value={{}}>

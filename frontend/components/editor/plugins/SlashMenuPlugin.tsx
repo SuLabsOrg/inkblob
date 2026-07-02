@@ -26,8 +26,12 @@ import {
     Minus,
     Type,
     Table,
+    Lightbulb,
+    ChevronRight,
 } from 'lucide-react';
 import { TableGridSelector } from '../ui/TableGridSelector';
+import { $createCalloutNode } from '../nodes/CalloutNode';
+import { $wrapBlockAsToggle } from '../utils/blockTransforms';
 
 class SlashMenuOption extends MenuOption {
     title: string;
@@ -255,15 +259,41 @@ export default function SlashMenuPlugin() {
                     editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined);
                 },
             }),
+            new SlashMenuOption('Callout', {
+                icon: <Lightbulb size={18} />,
+                keywords: ['callout', 'note', 'highlight', 'admonition'],
+                onSelect: (editor) => {
+                    editor.update(() => {
+                        const selection = $getSelection();
+                        if ($isRangeSelection(selection)) {
+                            $setBlocksType(selection, () => $createCalloutNode());
+                        }
+                    });
+                },
+            }),
+            new SlashMenuOption('Toggle List', {
+                icon: <ChevronRight size={18} />,
+                keywords: ['toggle', 'collapsible', 'collapse', 'expand', 'details'],
+                onSelect: () => {
+                    // onSelect is already invoked from within onSelectOption's own active
+                    // editor.update() (which already removed the slash-command text node), so we
+                    // read the selection directly here rather than nesting another editor.update()
+                    // - $wrapBlockAsToggle assumes an active update, matching that context exactly.
+                    const selection = $getSelection();
+                    if (!$isRangeSelection(selection)) return;
+                    const anchorNode = selection.anchor.getNode();
+                    const topLevel = anchorNode.getKey() === 'root' ? anchorNode : anchorNode.getTopLevelElementOrThrow();
+                    // Defer to the shared helper (also used by the block context menu's
+                    // "Turn into: Toggle") once we know which node to target.
+                    $wrapBlockAsToggle(topLevel.getKey());
+                },
+            }),
             new SlashMenuOption('Table', {
                 icon: <Table size={18} />,
                 keywords: ['table', 'grid', 'spreadsheet'],
-                onSelect: (editor) => {
-                    // Don't dispatch immediately. Check if we can show selector.
-                    setIsGridSelectorOpen(true);
-                    // We need to NOT close the menu immediately if possible?
-                    // Actually, we probably WANT the slash menu close, and the table selector to open.
-                },
+                // Table selection is special-cased in onSelectOption below (opens the grid selector
+                // instead of inserting directly), so this onSelect is intentionally never invoked.
+                onSelect: () => { },
             }),
         ];
     }, []);
@@ -366,14 +396,6 @@ export default function SlashMenuPlugin() {
                     position={gridSelectorPosition}
                 />
             )}
-            {/* Fallback if ref is lost or not set, maybe use a centered modal or last text cursor pos? 
-                But for now, `refElement` should be set if the menu was rendered.
-                Wait, if the menu closes, `refElement` (the DOM node) might be removed from DOM.
-                Ah, `SlashMenuPopover` renders children. If `closeMenu` is called, the `LexicalTypeaheadMenuPlugin` stops rendering the menu.
-                So `refElement` will be stale/removed.
-                
-                FIX: We need to capture the position BEFORE closing the menu.
-            */}
         </>
     );
 }

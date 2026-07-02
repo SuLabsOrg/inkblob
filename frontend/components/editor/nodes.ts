@@ -5,6 +5,8 @@ import { AutoLinkNode, LinkNode } from '@lexical/link';
 import { MarkNode } from '@lexical/mark';
 import { HorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode';
 import { TableNode, TableCellNode, TableRowNode } from '@lexical/table';
+import { CalloutNode } from './nodes/CalloutNode';
+import { CollapsibleContainerNode, CollapsibleContentNode, CollapsibleTitleNode } from './nodes/CollapsibleNode';
 
 export const EditorNodes = [
     HeadingNode,
@@ -20,4 +22,8 @@ export const EditorNodes = [
     TableNode,
     TableCellNode,
     TableRowNode,
+    CalloutNode,
+    CollapsibleContainerNode,
+    CollapsibleTitleNode,
+    CollapsibleContentNode,
 ];

@@ -7,6 +7,7 @@ export interface UploadResult {
     blobId: string;
     blobObject: string; // Sui object reference
     epochs: number;
+    encryptedSizeBytes: number; // Size in bytes of the encrypted payload actually uploaded to Walrus - used by callers (App.tsx's handleSaveNote) to compute the WAL storage fee (see suiService.ts's bytesToBlobSizeMb/calculateWalStorageFee) without re-encrypting the content just to measure it.
 }
 
 /**
@@ -62,6 +63,7 @@ export async function uploadBlob(
                     blobId,
                     blobObject,
                     epochs,
+                    encryptedSizeBytes: encryptedContent.length,
                 };
             } else if (currentAccountAddress && signAndExecuteTransaction) {
                 // No session key but have wallet: use writeFilesFlow for browser-friendly upload
@@ -113,6 +115,7 @@ export async function uploadBlob(
                     blobId: uploadedFile.blobId,
                     blobObject: uploadedFile.blobId,
                     epochs,
+                    encryptedSizeBytes: encryptedContent.length,
                 };
             } else {
                 // Neither session key nor wallet available

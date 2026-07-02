@@ -81,6 +81,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                         : 'bg-web3-card border-web3-border text-web3-textMuted hover:bg-web3-cardHover hover:text-web3-text'
                                                 }`}
                                                 title={showSessionStatus ? 'Hide session status' : 'Show session status'}
+                                                aria-label={showSessionStatus ? 'Hide session status' : 'Show session status'}
                                             >
                                                 {showSessionStatus ? <Eye size={18} /> : <EyeOff size={18} />}
                                             </button>
@@ -167,6 +168,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                                         : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
                                                 }`}
                                                 title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                                                aria-label={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
                                             >
                                                 {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
                                             </button>

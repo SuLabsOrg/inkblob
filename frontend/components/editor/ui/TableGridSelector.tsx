@@ -26,16 +26,6 @@ export const TableGridSelector: React.FC<TableGridSelectorProps> = ({ onSelect, 
         }
     };
 
-    React.useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            // Close if clicking outside logic handled or just use a backdrop
-        };
-        // Simple "close on any click outside this component" is tricky with portals without a backdrop
-        // relying on SlashMenu's close mechanism might be interfering.
-        // Let's add a transparent backdrop.
-        return () => { };
-    }, [close]);
-
     return createPortal(
         <>
             <div className="fixed inset-0 z-50" onClick={close} />
